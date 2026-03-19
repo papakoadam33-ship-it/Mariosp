@@ -1,1 +1,66 @@
+import requests
+import sqlite3
+from datetime import datetime
+
+# Ρυθμίσεις API (Πάρε το κλειδί σου από το RapidAPI)
+API_KEY = "ΤΟ_API_KEY_ΣΟΥ"
+BASE_URL = "https://api-football-v1.p.rapidapi.com/v3/fixtures"
+
+# 1. Σύνδεση με τη Βάση Δεδομένων
+def init_db():
+    conn = sqlite3.connect('betting_app.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS matches (
+            match_id INTEGER PRIMARY KEY,
+            date TEXT,
+            home_team TEXT,
+            away_team TEXT,
+            home_goals INTEGER,
+            away_goals INTEGER,
+            league_id INTEGER
+        )
+    ''')
+    conn.commit()
+    return conn
+
+# 2. Λήψη Δεδομένων από το API
+def fetch_and_save_matches(league_id, season):
+    conn = init_db()
+    cursor = conn.cursor()
+    
+    headers = {
+        "X-RapidAPI-Key": API_KEY,
+        "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
+    }
+    
+    # Ζητάμε τους αγώνες για το συγκεκριμένο πρωτάθλημα και σεζόν
+    params = {"league": str(league_id), "season": str(season)}
+    response = requests.get(BASE_URL, headers=headers, params=params)
+    
+    if response.status_code == 200:
+        matches = response.json().get('response', [])
+        for m in matches:
+            m_id = m['fixture']['id']
+            date = m['fixture']['date']
+            home = m['teams']['home']['name']
+            away = m['teams']['away']['name']
+            h_goals = m['goals']['home']
+            a_goals = m['goals']['away']
+            
+            # Αποθήκευση στη βάση (αν δεν υπάρχει ήδη)
+            cursor.execute('''
+                INSERT OR REPLACE INTO matches (match_id, date, home_team, away_team, home_goals, away_goals, league_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (m_id, date, home, away, h_goals, a_goals, league_id))
+            
+        conn.commit()
+        print(f"Επιτυχία! Αποθηκεύτηκαν {len(matches)} αγώνες.")
+    else:
+        print("Σφάλμα στη σύνδεση με το API.")
+    
+    conn.close()
+
+# Τρέξε το για την Premier League (ID: 39) για το 2023-2024
+fetch_and_save_matches(39, 2023)
 
