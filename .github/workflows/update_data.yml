@@ -1,0 +1,34 @@
+name: Daily Football Data Update
+
+on:
+  schedule:
+    - cron: '0 6 * * *' # Τρέχει κάθε μέρα στις 08:00 ώρα Ελλάδος
+  workflow_dispatch: # Σου επιτρέπει να το τρέχεις χειροκίνητα με κουμπί
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: pip install requests pandas
+
+      - name: Run Data Fetcher
+        env:
+          FOOTBALL_API_KEY: ${{ secrets.FOOTBALL_API_KEY }}
+        run: python data_fetcher.py
+
+      - name: Commit and Push changes
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add betting_app.db
+          git commit -m "Auto-update football data" || exit 0
+          git push
