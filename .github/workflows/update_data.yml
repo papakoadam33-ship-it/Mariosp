@@ -23,7 +23,7 @@ jobs:
       - name: Run Data Fetcher
         env:
           FOOTBALL_API_KEY: ${{ secrets.FOOTBALL_API_KEY }}
-        run: python test.py
+        run: python ./data_fetcher.py
 
       - name: Commit and Push changes
         run: |
