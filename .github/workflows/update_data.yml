@@ -1,9 +1,9 @@
 name: Daily Football Data Update
 
 on:
+  workflow_dispatch:
   schedule:
-    - cron: '0 6 * * *' # Τρέχει κάθε μέρα στις 08:00 ώρα Ελλάδος
-  workflow_dispatch: # Σου επιτρέπει να το τρέχεις χειροκίνητα με κουμπί
+    - cron: '0 6 * * *'
 
 jobs:
   build:
@@ -32,3 +32,4 @@ jobs:
           git add betting_app.db
           git commit -m "Auto-update football data" || exit 0
           git push
+
