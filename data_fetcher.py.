@@ -1,12 +1,11 @@
 import requests
 import sqlite3
-from datetime import datetime
+import os
 
-# Ρυθμίσεις API (Πάρε το κλειδί σου από το RapidAPI)
-API_KEY = "ΤΟ_API_KEY_ΣΟΥ"
-BASE_URL = "https://api-football-v1.p.rapidapi.com/v3/fixtures"
+# Ρύθμιση για το νέο API
+API_KEY = os.environ.get('FOOTBALL_API_KEY')
+BASE_URL = "https://api.football-data.org/v4/competitions/PL/matches"
 
-# 1. Σύνδεση με τη Βάση Δεδομένων
 def init_db():
     conn = sqlite3.connect('betting_app.db')
     cursor = conn.cursor()
@@ -17,50 +16,45 @@ def init_db():
             home_team TEXT,
             away_team TEXT,
             home_goals INTEGER,
-            away_goals INTEGER,
-            league_id INTEGER
+            away_goals INTEGER
         )
     ''')
     conn.commit()
     return conn
 
-# 2. Λήψη Δεδομένων από το API
-def fetch_and_save_matches(league_id, season):
-    conn = init_db()
-    cursor = conn.cursor()
-    
-    headers = {
-        "X-RapidAPI-Key": API_KEY,
-        "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
-    }
-    
-    # Ζητάμε τους αγώνες για το συγκεκριμένο πρωτάθλημα και σεζόν
-    params = {"league": str(league_id), "season": str(season)}
-    response = requests.get(BASE_URL, headers=headers, params=params)
+def fetch_data():
+    if not API_KEY:
+        print("Λείπει το API KEY!")
+        return
+
+    headers = {'X-Auth-Token': API_KEY}
+    response = requests.get(BASE_URL, headers=headers)
     
     if response.status_code == 200:
-        matches = response.json().get('response', [])
-        for m in matches:
-            m_id = m['fixture']['id']
-            date = m['fixture']['date']
-            home = m['teams']['home']['name']
-            away = m['teams']['away']['name']
-            h_goals = m['goals']['home']
-            a_goals = m['goals']['away']
+        data = response.json()
+        conn = init_db()
+        cursor = conn.cursor()
+        
+        for match in data['matches']:
+            m_id = match['id']
+            date = match['utcDate']
+            home = match['homeTeam']['name']
+            away = match['awayTeam']['name']
+            h_goals = match['score']['fullTime']['home']
+            a_goals = match['score']['fullTime']['away']
             
-            # Αποθήκευση στη βάση (αν δεν υπάρχει ήδη)
             cursor.execute('''
-                INSERT OR REPLACE INTO matches (match_id, date, home_team, away_team, home_goals, away_goals, league_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (m_id, date, home, away, h_goals, a_goals, league_id))
+                INSERT OR REPLACE INTO matches (match_id, date, home_team, away_team, home_goals, away_goals)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (m_id, date, home, away, h_goals, a_goals))
             
         conn.commit()
-        print(f"Επιτυχία! Αποθηκεύτηκαν {len(matches)} αγώνες.")
+        conn.close()
+        print("Η βάση ενημερώθηκε!")
     else:
-        print("Σφάλμα στη σύνδεση με το API.")
-    
-    conn.close()
+        print(f"Σφάλμα API: {response.status_code}")
 
-# Τρέξε το για την Premier League (ID: 39) για το 2023-2024
-fetch_and_save_matches(39, 2023)
+if __name__ == "__main__":
+    fetch_data()
+
 
