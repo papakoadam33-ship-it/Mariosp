@@ -3,6 +3,10 @@ import sqlite3
 import pandas as pd
 from scipy.stats import poisson
 
+st.title("Test App")
+st.write("Αν βλέπεις αυτό, το Scipy δουλεύει!")
+
+
 st.set_page_config(page_title="Pro Football Predictor", layout="wide")
 
 st.title("⚽ Football Prediction Dashboard")
