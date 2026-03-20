@@ -1,7 +1,8 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-from scipy.stats import poisson  # Εδώ είναι το μυστικό, με δύο s!
+from scipy.stats import poisson
+
 
 st.set_page_config(page_title="Pro Bet Predictor", layout="wide")
 
