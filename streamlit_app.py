@@ -3,15 +3,11 @@ import sqlite3
 import pandas as pd
 from scipy.stats import poisson
 
-st.title("Test App")
-st.write("Αν βλέπεις αυτό, το Scipy δουλεύει!")
-
-
+# Η ρύθμιση σελίδας πρέπει να είναι ΠΡΩΤΗ
 st.set_page_config(page_title="Pro Football Predictor", layout="wide")
 
 st.title("⚽ Football Prediction Dashboard")
 
-# Σύνδεση με τη βάση
 try:
     conn = sqlite3.connect('betting_app.db')
     df = pd.read_sql_query("SELECT * FROM matches", conn)
@@ -28,8 +24,8 @@ try:
         for index, row in df.iterrows():
             with st.expander(f"📅 {row['home_team']} vs {row['away_team']}"):
                 c1, c2, c3 = st.columns(3)
-                # Βασική πρόβλεψη Poisson
-                h_prob = round(poisson.pmf(2, 1.5) * 100, 1) # Παράδειγμα %
+                # Εδώ υπολογίζουμε μια βασική πρόβλεψη Poisson για 1-X-2
+                h_prob = round(poisson.pmf(2, 1.5) * 100, 1)
                 c1.metric("Πιθανότητα 1", f"{h_prob}%")
                 c2.metric("Πιθανότητα Χ", "25.0%")
                 c3.metric("Πιθανότητα 2", "30.0%")
@@ -40,5 +36,5 @@ try:
         st.warning("Η βάση δεδομένων είναι άδεια. Τρέξε το GitHub Action!")
 
 except Exception as e:
-    st.error(f"Περίμενε να ενημερωθούν τα δεδομένα... (Σφάλμα: {e})")
+    st.error(f"Σφάλμα: {e}")
 
