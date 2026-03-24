@@ -20,7 +20,7 @@ def calculate_probs(h_lambda, a_lambda):
 
 # --- ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ ---
 try:
-    conn = sqlite3.connect('betting_app.db')
+    conn = sqlite3.connect('betting_new.db')
     df = pd.read_sql_query("SELECT * FROM matches", conn)
     conn.close()
 
