@@ -1,20 +1,25 @@
 import requests
 import sqlite3
 import os
+import time
 
+# Παίρνει το API KEY από τα Secrets του GitHub
 API_KEY = os.environ.get('FOOTBALL_API_KEY')
-# Λίστα με τα πρωταθλήματα που θέλουμε
+
+# Λίστα με τα πρωταθλήματα που επιτρέπει το ΔΩΡΕΑΝ πακέτο
 LEAGUES = {
     'PL': 'Premier League',
     'PD': 'La Liga',
     'SA': 'Serie A',
-    'BL1': 'Bundesliga'
+    'BL1': 'Bundesliga',
+    'FL1': 'Ligue 1',
+    'PPL': 'Primeira Liga'
 }
 
 def init_db():
     conn = sqlite3.connect('betting_app.db')
     cursor = conn.cursor()
-    # Προσθέσαμε τη στήλη 'league'
+    # Δημιουργία πίνακα με τη στήλη 'league'
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS matches (
             match_id INTEGER PRIMARY KEY,
@@ -31,7 +36,7 @@ def init_db():
 
 def fetch_data():
     if not API_KEY:
-        print("❌ Σφάλμα: Λείπει το API KEY!")
+        print("❌ Σφάλμα: Λείπει το API KEY στα Secrets!")
         return
 
     conn = init_db()
@@ -42,11 +47,14 @@ def fetch_data():
         url = f"https://api.football-data.org/v4/competitions/{code}/matches"
         try:
             response = requests.get(url, headers=headers)
+            
             if response.status_code == 200:
                 data = response.json()
-                for match in data.get('matches', []):
+                matches_found = data.get('matches', [])
+                
+                for match in matches_found:
                     m_id = match['id']
-                    # Παίρνουμε την ημερομηνία και την καθαρίζουμε λίγο
+                    # Καθαρισμός ημερομηνίας
                     date = match['utcDate'].replace('T', ' ').replace('Z', '')
                     home = match['homeTeam']['name']
                     away = match['awayTeam']['name']
@@ -60,11 +68,19 @@ def fetch_data():
                         (match_id, date, league, home_team, away_team, home_goals, away_goals)
                         VALUES (?, ?, ?, ?, ?, ?, ?)
                     ''', (m_id, date, name, home, away, h_goals, a_goals))
-                print(f"✅ Ενημερώθηκε το: {name}")
+                
+                print(f"✅ Ενημερώθηκε επιτυχώς: {name}")
+            
+            elif response.status_code == 429:
+                print(f"⚠️ Όριο API στο {name}. Περίμενε...")
             else:
-                print(f"⚠️ Σφάλμα στο {name}: {response.status_code}")
+                print(f"⚠️ Σφάλμα {response.status_code} στο {name}")
+
         except Exception as e:
-            print(f"❌ Κάτι πήγε στραβά στο {name}: {e}")
+            print(f"❌ Σφάλμα στο {name}: {e}")
+        
+        # ΠΟΛΥ ΣΗΜΑΝΤΙΚΟ: Περιμένουμε 15 δευτερόλεπτα για να μην μας "κλειδώσει" το API
+        time.sleep(15)
 
     conn.commit()
     conn.close()
