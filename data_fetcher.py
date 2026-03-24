@@ -17,7 +17,7 @@ LEAGUES = {
 }
 
 def init_db():
-    conn = sqlite3.connect('betting_app.db')
+    conn = sqlite3.connect('betting_new.db')
     cursor = conn.cursor()
     # Δημιουργία πίνακα με τη στήλη 'league'
     cursor.execute('''
