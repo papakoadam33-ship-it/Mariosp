@@ -8,10 +8,11 @@ import os
 st.set_page_config(page_title="Pro Football Predictor", layout="wide")
 
 # --- ΡΥΘΜΙΣΕΙΣ API ---
-API_KEY ="a1a4edf072dc4b2c8153fced44c88de9"
+# Εδώ βάλαμε το κλειδί σου σωστά με εισαγωγικά
+API_KEY = "ala4edf072dc4b2c8153fced44c88de9" 
 LEAGUES = {'PL': 'Premier League', 'PD': 'La Liga', 'SA': 'Serie A', 'BL1': 'Bundesliga'}
 
-@st.cache_data(ttl=3600) # Αποθήκευση δεδομένων για 1 ώρα για ταχύτητα
+@st.cache_data(ttl=600)
 def fetch_live_data():
     all_matches = []
     headers = {'X-Auth-Token': API_KEY}
@@ -34,23 +35,24 @@ def fetch_live_data():
 def calc_probs(h_l, a_l):
     p1 = sum([poisson.pmf(i, h_l) * sum([poisson.pmf(j, a_l) for j in range(i)]) for i in range(1, 10)])
     px = sum([poisson.pmf(i, h_l) * poisson.pmf(i, a_l) for i in range(10)])
-    p2 = 1 - p1 - px
+    p2 = max(0, 1 - p1 - px)
     pgg = (1 - poisson.pmf(0, h_l)) * (1 - poisson.pmf(0, a_l))
     return p1, px, p2, pgg
 
 # --- ΚΥΡΙΟ APP ---
 st.title("⚽ Live Football Predictor")
 
-if not API_KEY or API_KEY == "ΤΟ_API_KEY":
-    st.error("Πρέπει να βάλεις το API KEY στα Secrets του Streamlit!")
+if not API_KEY:
+    st.error("Λείπει το API Key!")
 else:
     df = fetch_live_data()
     
     if not df.empty:
-        df['date_dt'] = pd.to_datetime(df['date'])
+        # Διόρθωση σφάλματος ημερομηνίας (γραμμή 54)
+        df['date_dt'] = pd.to_datetime(df['date']).dt.tz_localize(None)
         now = datetime.utcnow()
         
-        # Φιλτράρισμα: Μόνο μελλοντικά ματς (επόμενες 3 μέρες)
+        # Φιλτράρισμα: Επόμενες 3 μέρες
         future_df = df[(df['date_dt'] > now) & (df['date_dt'] < now + timedelta(days=3))].sort_values('date_dt')
         
         st.sidebar.header("📍 Φίλτρα")
@@ -60,8 +62,11 @@ else:
         if sel_league != "Όλα":
             future_df = future_df[future_df['league'] == sel_league]
 
+        if future_df.empty:
+            st.info("Δεν βρέθηκαν προσεχείς αγώνες για τις επιλογές σου.")
+        
         for _, row in future_df.iterrows():
-            # Χρησιμοποιούμε default 1.5/1.2 αφού δεν έχουμε ιστορικά εδώ
+            # Default τιμές για Poisson
             p1, px, p2, pgg = calc_probs(1.6, 1.3) 
             
             if top_picks and not any(p > 0.7 for p in [p1, p2, pgg]):
@@ -75,4 +80,4 @@ else:
                 c3.metric("Διπλό", f"{round(p2*100)}%", delta="TOP" if p2 > 0.7 else None)
                 c4.metric("Goal-Goal", f"{round(pgg*100)}%")
     else:
-        st.info("Φόρτωση δεδομένων... Αν αργεί, το API έχει πιάσει το όριο.")
+        st.warning("Δεν υπάρχουν δεδομένα. Ελέγξτε αν το API Key είναι σωστό ή αν ξεπεράσατε το όριο.")
