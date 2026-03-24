@@ -8,7 +8,7 @@ import os
 st.set_page_config(page_title="Pro Football Predictor", layout="wide")
 
 # --- ΡΥΘΜΙΣΕΙΣ API ---
-API_KEY = st.secrets.get("FOOTBALL_API_KEY", "ΤΟ_API_KEY_ΣΟΥ") # Βάλτο στα Secrets του Streamlit
+API_KEY =a1a4edf072dc4b2c8153fced44c88de9
 LEAGUES = {'PL': 'Premier League', 'PD': 'La Liga', 'SA': 'Serie A', 'BL1': 'Bundesliga'}
 
 @st.cache_data(ttl=3600) # Αποθήκευση δεδομένων για 1 ώρα για ταχύτητα
