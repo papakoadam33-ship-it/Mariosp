@@ -1,4 +1,3 @@
-
 import streamlit as st
 import requests
 import pandas as pd
@@ -10,7 +9,7 @@ st.set_page_config(page_title="Pro Football Predictor", layout="wide")
 # --- ΡΥΘΜΙΣΕΙΣ API ---
 API_KEY = "ala4edf072dc4b2c8153fced44c88de9" 
 
-# Χρησιμοποιούμε μόνο τα 100% σίγουρα πρωταθλήματα του Free Tier
+# Πρωταθλήματα που δουλεύουν σίγουρα στο Free Tier
 LEAGUES = {
     'PL': 'Premier League',
     'PD': 'La Liga',
@@ -22,8 +21,13 @@ LEAGUES = {
 @st.cache_data(ttl=600)
 def fetch_live_data(league_code):
     headers = {'X-Auth-Token': API_KEY}
-    # Προσθέσαμε το ?status=SCHEDULED για να μην τρώμε Error 400
-    url = f"https://api.football-data.org/v4/competitions/{league_code}/matches?status=SCHEDULED"
+    
+    # Ζητάμε ΜΟΝΟ τις επόμενες 7 ημέρες για να αποφύγουμε το Error 400
+    today = datetime.utcnow().strftime('%Y-%m-%d')
+    end_date = (datetime.utcnow() + timedelta(days=7)).strftime('%Y-%m-%d')
+    
+    url = f"https://api.football-data.org/v4/competitions/{league_code}/matches?dateFrom={today}&dateTo={end_date}"
+    
     try:
         res = requests.get(url, headers=headers)
         if res.status_code == 200:
@@ -38,9 +42,10 @@ def fetch_live_data(league_code):
                 })
             return pd.DataFrame(matches)
         else:
-            st.error(f"API Error {res.status_code}: Πιθανώς το πρωτάθλημα {league_code} δεν υποστηρίζεται στο δωρεάν πακέτο.")
+            # Αν αποτύχει, θα μας πει το λόγο
+            st.error(f"API Error {res.status_code}. Δοκίμασε σε 1 λεπτό.")
             return pd.DataFrame()
-    except Exception as e:
+    except:
         return pd.DataFrame()
 
 def calc_probs(h_l, a_l):
@@ -56,27 +61,29 @@ st.title("⚽ Pro Football Predictor")
 
 st.sidebar.header("📍 Ρυθμίσεις")
 sel_league_name = st.sidebar.selectbox("Επίλεξε Πρωτάθλημα:", list(LEAGUES.values()))
-top_picks = st.sidebar.toggle("🔥 Δείξε μόνο TOP PICKS (>70%)")
+top_picks = st.sidebar.toggle("🔥 Μόνο TOP PICKS (>70%)")
 
 sel_league_code = [k for k, v in LEAGUES.items() if v == sel_league_name][0]
 
 df = fetch_live_data(sel_league_code)
 
 if not df.empty:
+    # Διόρθωση timezone για να μην κολλάει η σύγκριση
     df['date_dt'] = pd.to_datetime(df['date']).dt.tz_localize(None)
     now = datetime.utcnow()
     
-    # Φιλτράρουμε για τις επόμενες 7 μέρες για να έχουμε γεμάτη λίστα
-    future_df = df[(df['date_dt'] > now) & (df['date_dt'] < now + timedelta(days=7))].sort_values('date_dt')
+    # Κρατάμε μόνο μελλοντικά ματς
+    future_df = df[df['date_dt'] > now].sort_values('date_dt')
     
     if future_df.empty:
-        st.info(f"Δεν βρέθηκαν προγραμματισμένοι αγώνες για την {sel_league_name} τις επόμενες μέρες.")
+        st.info(f"Δεν βρέθηκαν ματς για την {sel_league_name} αυτή την εβδομάδα.")
     else:
         for _, row in future_df.iterrows():
-            # Πρόβλεψη Poisson (1.7 home / 1.3 away κατά μέσο όρο)
-            p1, px, p2, pgg, po25 = calc_probs(1.7, 1.3) 
+            # Poisson με μέσες τιμές 1.7 - 1.2
+            p1, px, p2, pgg, po25 = calc_probs(1.7, 1.2) 
             
-            if top_picks and not any(p > 0.7 for p in [p1, p2, pgg, po25]):
+            # Φίλτρο Top Picks για Άσσο, Διπλό ή Over 2.5
+            if top_picks and not (p1 > 0.7 or p2 > 0.7 or po25 > 0.65):
                 continue
                 
             gr_time = (row['date_dt'] + timedelta(hours=2)).strftime('%d/%m | %H:%M')
@@ -91,4 +98,4 @@ if not df.empty:
                 c4.metric("Goal-Goal", f"{round(pgg*100)}%")
                 c5.metric("Over 2.5", f"{round(po25*100)}%", delta="VALUE" if po25 > 0.65 else None)
 else:
-    st.warning("Δεν υπάρχουν δεδομένα. Δοκίμασε άλλο πρωτάθλημα ή περίμενε 1 λεπτό.")
+    st.warning("Επίλεξε ένα πρωτάθλημα ή περίμενε λίγο για το API.")
