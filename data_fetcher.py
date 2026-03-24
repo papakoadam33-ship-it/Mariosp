@@ -2,18 +2,24 @@ import requests
 import sqlite3
 import os
 
-# Εδώ παίρνουμε το κλειδί που έβαλες στα Secrets
 API_KEY = os.environ.get('FOOTBALL_API_KEY')
-# Αυτή η διεύθυνση είναι για το Football-Data.org
-BASE_URL = "https://api.football-data.org/v4/competitions/PL/matches"
+# Λίστα με τα πρωταθλήματα που θέλουμε
+LEAGUES = {
+    'PL': 'Premier League',
+    'PD': 'La Liga',
+    'SA': 'Serie A',
+    'BL1': 'Bundesliga'
+}
 
 def init_db():
     conn = sqlite3.connect('betting_app.db')
     cursor = conn.cursor()
+    # Προσθέσαμε τη στήλη 'league'
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS matches (
             match_id INTEGER PRIMARY KEY,
             date TEXT,
+            league TEXT,
             home_team TEXT,
             away_team TEXT,
             home_goals INTEGER,
@@ -25,39 +31,43 @@ def init_db():
 
 def fetch_data():
     if not API_KEY:
-        print("Σφάλμα: Λείπει το API KEY από τα Secrets!")
+        print("❌ Σφάλμα: Λείπει το API KEY!")
         return
 
+    conn = init_db()
+    cursor = conn.cursor()
     headers = {'X-Auth-Token': API_KEY}
-    try:
-        response = requests.get(BASE_URL, headers=headers)
-        if response.status_code == 200:
-            data = response.json()
-            conn = init_db()
-            cursor = conn.cursor()
-            
-            for match in data.get('matches', []):
-                m_id = match['id']
-                date = match['utcDate']
-                home = match['homeTeam']['name']
-                away = match['awayTeam']['name']
-                # Χειρισμός για αγώνες που δεν έχουν γίνει ακόμα
-                score = match.get('score', {}).get('fullTime', {})
-                h_goals = score.get('home')
-                a_goals = score.get('away')
-                
-                cursor.execute('''
-                    INSERT OR REPLACE INTO matches (match_id, date, home_team, away_team, home_goals, away_goals)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (m_id, date, home, away, h_goals, a_goals))
-                
-            conn.commit()
-            conn.close()
-            print("✅ Η βάση ενημερώθηκε επιτυχώς!")
-        else:
-            print(f"❌ Σφάλμα API: {response.status_code}. Ελέγξτε το Key σας.")
-    except Exception as e:
-        print(f"❌ Κάτι πήγε στραβά: {e}")
+
+    for code, name in LEAGUES.items():
+        url = f"https://api.football-data.org/v4/competitions/{code}/matches"
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                data = response.json()
+                for match in data.get('matches', []):
+                    m_id = match['id']
+                    # Παίρνουμε την ημερομηνία και την καθαρίζουμε λίγο
+                    date = match['utcDate'].replace('T', ' ').replace('Z', '')
+                    home = match['homeTeam']['name']
+                    away = match['awayTeam']['name']
+                    
+                    score = match.get('score', {}).get('fullTime', {})
+                    h_goals = score.get('home')
+                    a_goals = score.get('away')
+
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO matches 
+                        (match_id, date, league, home_team, away_team, home_goals, away_goals)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''', (m_id, date, name, home, away, h_goals, a_goals))
+                print(f"✅ Ενημερώθηκε το: {name}")
+            else:
+                print(f"⚠️ Σφάλμα στο {name}: {response.status_code}")
+        except Exception as e:
+            print(f"❌ Κάτι πήγε στραβά στο {name}: {e}")
+
+    conn.commit()
+    conn.close()
 
 if __name__ == "__main__":
     fetch_data()
