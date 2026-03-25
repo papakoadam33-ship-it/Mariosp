@@ -5,9 +5,7 @@ import pandas as pd
 
 st.set_page_config(page_title="Pro Football Predictor", layout="wide")
 
-# --- API CONFIG ---
 API_KEY = "a963742bcd5642afbe8c842d057f25ad" 
-
 LEAGUES = {'PL':'Premier League','PD':'La Liga', 'BL1':'Bundesliga', 'SA':'Serie A', 'FL1':'Ligue 1'}
 
 @st.cache_data(ttl=300)
@@ -18,27 +16,25 @@ def fetch_data(url):
         return res.json() if res.status_code == 200 else {}
     except: return {}
 
-# --- ΥΠΟΛΟΓΙΣΜΟΙ ---
 def get_advanced_stats(matches, team_name, standings):
     if not matches: return 1.2
     total_goals = 0
-    strength_points = 0
+    # Βρίσκουμε τη θέση της ομάδας για το "Quality Bonus"
     ranks = {t['team']['name']: t['position'] for t in standings} if standings else {}
+    current_rank = ranks.get(team_name, 10)
+    
+    # Bonus βάσει θέσης: Όσο πιο ψηλά, τόσο μεγαλύτερο το "λ" (επιθετική ισχύς)
+    quality_bonus = (21 - current_rank) / 20  # π.χ. η 1η ομάδα παίρνει +1.0, η 20η παίρνει +0.05
     
     for m in matches:
         is_h = m['homeTeam']['name'] == team_name
         score = m.get('score', {}).get('fullTime', {})
         g = score.get('home') if is_h else score.get('away')
         if g is not None: total_goals += g
-        
-        opp_name = m['awayTeam']['name'] if is_h else m['homeTeam']['name']
-        opp_rank = ranks.get(opp_name, 10)
-        if (is_h and score.get('home', 0) > score.get('away', 0)) or \
-           (not is_h and score.get('away', 0) > score.get('home', 0)):
-            strength_points += (21 - opp_rank)
 
     avg_goals = total_goals / len(matches) if len(matches) > 0 else 1.2
-    return max(0.5, avg_goals + (strength_points / 150))
+    # Τελικό σκορ: Μέσος όρος γκολ + Bonus Ποιότητας (Βαθμολογία)
+    return max(0.5, (avg_goals * 0.6) + (quality_bonus * 0.4)) 
 
 def calc_all(h_l, a_l):
     h_l, a_l = max(0.1, h_l), max(0.1, a_l)
@@ -50,7 +46,7 @@ def calc_all(h_l, a_l):
     po25 = 1 - sum([poisson.pmf(i, h_l + a_l) for i in range(3)])
     return p1, px, p2, pgg, po15, po25
 
-# --- SIDEBAR: Ο ΠΑΛΙΟΣ ΑΠΛΟΣ ΠΙΝΑΚΑΣ ---
+# --- SIDEBAR (BACK TO BASICS) ---
 st.sidebar.title("📍 Ρυθμίσεις")
 sel_league_name = st.sidebar.selectbox("Πρωτάθλημα:", list(LEAGUES.values()))
 top_picks = st.sidebar.toggle("🔥 TOP PICKS")
@@ -61,30 +57,22 @@ st_data = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_code}/
 standings_list = []
 if st_data and 'standings' in st_data:
     standings_list = st_data['standings'][0]['table']
-    # Δημιουργία DataFrame για τον απλό πίνακα χωρίς εικόνες
-    df_data = []
-    for t in standings_list:
-        df_data.append({
-            "Pos": t['position'],
-            "Team": t['team']['shortName'],
-            "Pts": t['points']
-        })
+    df_data = [{"Pos": t['position'], "Team": t['team']['shortName'], "Pts": t['points']} for t in standings_list]
     st.sidebar.table(pd.DataFrame(df_data).set_index('Pos'))
 
 # --- MAIN PANEL ---
 st.title(f"⚽ Predictions: {sel_league_name}")
-all_data = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_code}/matches")
-all_m = all_data.get('matches', [])
+all_m = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_code}/matches").get('matches', [])
 display_m = [m for m in all_m if m['status'] in ['SCHEDULED', 'TIMED', 'LIVE', 'IN_PLAY']][:15]
 if not display_m: display_m = [m for m in all_m if m['status'] == 'FINISHED'][-10:]
 
 for m in display_m:
     h_t, a_t, h_id, a_id = m['homeTeam']['name'], m['awayTeam']['name'], m['homeTeam']['id'], m['awayTeam']['id']
-    h_f_data = fetch_data(f"https://api.football-data.org/v4/teams/{h_id}/matches?status=FINISHED&limit=5")
-    a_f_data = fetch_data(f"https://api.football-data.org/v4/teams/{a_id}/matches?status=FINISHED&limit=5")
+    h_f = fetch_data(f"https://api.football-data.org/v4/teams/{h_id}/matches?status=FINISHED&limit=5")
+    a_f = fetch_data(f"https://api.football-data.org/v4/teams/{a_id}/matches?status=FINISHED&limit=5")
     
-    h_l = get_advanced_stats(h_f_data.get('matches', []), h_t, standings_list)
-    a_l = get_advanced_stats(a_f_data.get('matches', []), a_t, standings_list)
+    h_l = get_advanced_stats(h_f.get('matches', []), h_t, standings_list)
+    a_l = get_advanced_stats(a_f.get('matches', []), a_t, standings_list)
     
     p1, px, p2, pgg, po15, po25 = calc_all(h_l, a_l)
     if top_picks and not (p1 > 0.65 or p2 > 0.65 or po25 > 0.65): continue
@@ -93,12 +81,9 @@ for m in display_m:
         cols = st.columns(6)
         lbls = ["1", "X", "2", "GG", "O1.5", "O2.5"]
         vals = [p1, px, p2, pgg, po15, po25]
-        for i in range(6):
-            cols[i].metric(lbls[i], f"{round(vals[i]*100)}%")
-
+        for i in range(6): cols[i].metric(lbls[i], f"{round(vals[i]*100)}%")
         st.divider()
-        # ΦΟΡΜΑ ΟΡΙΖΟΝΤΙΑ (ICON ΔΙΠΛΑ ΣΤΟ LOGO)
-        for label, f_matches, t_name in [("🏠 " + h_t, h_f_data.get('matches', []), h_t), ("🚀 " + a_t, a_f_data.get('matches', []), a_t)]:
+        for label, f_matches, t_name in [("🏠 " + h_t, h_f.get('matches', []), h_t), ("🚀 " + a_t, a_f.get('matches', []), a_t)]:
             st.write(f"**{label}**")
             f_cols = st.columns(5)
             for i, tm in enumerate(f_matches):
@@ -109,4 +94,3 @@ for m in display_m:
                 icon = "🟡" if hg == ag else ("🟢" if (is_h and hg > ag) or (not is_h and ag > hg) else "🔴")
                 with f_cols[i]:
                     st.markdown(f'<div style="display: flex; align-items: center; gap: 5px;"><span>{icon}</span><img src="{opp_logo}" width="20"></div>', unsafe_allow_html=True)
-            st.write("")
