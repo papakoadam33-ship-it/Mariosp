@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 st.set_page_config(page_title="Pro Football Predictor", layout="wide")
 
 # --- ΡΥΘΜΙΣΕΙΣ API ---
-API_KEY = "ala4edf072dc4b2c8153fced44c88de9" 
+API_KEY = "a963742bcd5642afbe8c842d057f25ad"
 
 LEAGUES = {
     'PL': 'Premier League',
