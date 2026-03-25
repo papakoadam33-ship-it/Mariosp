@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 st.set_page_config(page_title="Pro Football Predictor PRO", layout="wide")
 
 # --- ΡΥΘΜΙΣΕΙΣ API ---
-API_KEY = "ΤΟ_ΚΛΕΙΔΙ_ΣΟΥ_ΕΔΩ" # Βάλε το κλειδί που δουλεύει
+API_KEY = "a963742bcd5642afbe8c842d057f25ad" 
 
 LEAGUES = {
     'PL': 'Premier League',
@@ -51,8 +51,7 @@ def fetch_data(url):
         res = requests.get(url, headers=headers)
         if res.status_code == 200:
             return res.json()
-    except:
-        pass
+    except: pass
     return {}
 
 def calc_all(h_l, a_l):
@@ -72,51 +71,59 @@ top_picks = st.sidebar.toggle("🔥 TOP PICKS (>70%)")
 
 sel_league_code = [k for k, v in LEAGUES.items() if v == sel_league_name][0]
 
-# Κλήση για αγώνες
-data = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_league_code}/matches?status=SCHEDULED")
+# --- ΔΙΟΡΘΩΣΗ ΟΡΙΟΥ ΗΜΕΡΟΜΗΝΙΑΣ ---
+today = datetime.utcnow().strftime('%Y-%m-%d')
+ten_days_later = (datetime.utcnow() + timedelta(days=10)).strftime('%Y-%m-%d')
+
+url = f"https://api.football-data.org/v4/competitions/{sel_league_code}/matches?dateFrom={today}&dateTo={ten_days_later}"
+data = fetch_data(url)
 matches = data.get('matches', [])
 
 if matches:
-    for m in matches[:12]:
+    for m in matches:
         h_team = m['homeTeam']['name']
         a_team = m['awayTeam']['name']
         h_id = m['homeTeam']['id']
         a_id = m['awayTeam']['id']
         
+        # Πρόβλεψη (ενδεικτικά 1.7 - 1.2 γκολ)
         p1, px, p2, pgg, po15, po25 = calc_all(1.7, 1.2)
         
+        # Αν το Top Picks είναι ON, δείξε μόνο τα δυνατά σημεία
         if top_picks and not (p1 > 0.7 or p2 > 0.7 or po25 > 0.7): continue
 
-        with st.expander(f"⭐ {h_team} vs {a_team}"):
+        with st.expander(f"⭐ {h_team} vs {a_team} ({m['utcDate'][:10]})"):
             c1, c2, c3 = st.columns(3)
-            c1.metric("1", f"{round(p1*100)}%")
-            c2.metric("X", f"{round(px*100)}%")
-            c3.metric("2", f"{round(p2*100)}%")
+            c1.metric("Άσσος (1)", f"{round(p1*100)}%")
+            c2.metric("Ισοπαλία (X)", f"{round(px*100)}%")
+            c3.metric("Διπλό (2)", f"{round(p2*100)}%")
             
             c4, c5, c6 = st.columns(3)
-            c4.metric("G/G", f"{round(pgg*100)}%")
+            c4.metric("Goal/Goal", f"{round(pgg*100)}%")
             c5.metric("Over 1.5", f"{round(po15*100)}%")
             c6.metric("Over 2.5", f"{round(po25*100)}%")
             
             st.divider()
             
-            st.subheader("📊 Τελευταία 5 Ματς")
+            st.subheader("📊 Τελευταία 5 Ματς & Αντίπαλοι")
             col_h, col_a = st.columns(2)
             
+            # Φόρμα Γηπεδούχου
             h_data = fetch_data(f"https://api.football-data.org/v4/teams/{h_id}/matches?status=FINISHED&limit=10")
-            a_data = fetch_data(f"https://api.football-data.org/v4/teams/{a_id}/matches?status=FINISHED&limit=10")
-            
             f_h, d_h = get_form_string(h_team, h_data.get('matches', []))
+            
+            # Φόρμα Φιλοξενούμενου
+            a_data = fetch_data(f"https://api.football-data.org/v4/teams/{a_id}/matches?status=FINISHED&limit=10")
             f_a, d_a = get_form_string(a_team, a_data.get('matches', []))
             
             with col_h:
-                st.write(f"**{h_team}**")
+                st.write(f"🏠 **{h_team}**")
                 st.markdown(f"### {f_h}")
                 for d in d_h: st.caption(d)
             
             with col_a:
-                st.write(f"**{a_team}**")
+                st.write(f"🚀 **{a_team}**")
                 st.markdown(f"### {f_a}")
                 for d in d_a: st.caption(d)
 else:
-    st.info("Δεν βρέθηκαν προσεχείς αγώνες.")
+    st.info(f"Δεν βρέθηκαν αγώνες για την {sel_league_name} τις επόμενες 10 ημέρες.")
