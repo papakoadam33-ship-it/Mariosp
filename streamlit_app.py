@@ -1,3 +1,4 @@
+a963742bcd5642afbe8c842d057f25ad
 import streamlit as st
 import requests
 from scipy.stats import poisson
@@ -27,13 +28,11 @@ def get_advanced_stats(matches, team_name, standings):
     
     for m in matches:
         is_h = m['homeTeam']['name'] == team_name
-        opp_name = m['awayTeam']['name'] if is_h else m['homeTeam']['name']
         score = m.get('score', {}).get('fullTime', {})
         g = score.get('home') if is_h else score.get('away')
         if g is not None: total_goals += g
         
-        # Υπολογισμός δύναμης αντιπάλου
-        opp_rank = ranks.get(opp_name, 10)
+        opp_rank = ranks.get(m['awayTeam']['name'] if is_h else m['homeTeam']['name'], 10)
         if (is_h and score.get('home', 0) > score.get('away', 0)) or \
            (not is_h and score.get('away', 0) > score.get('home', 0)):
             strength_points += (21 - opp_rank)
@@ -42,7 +41,6 @@ def get_advanced_stats(matches, team_name, standings):
     return max(0.5, avg_goals + (strength_points / 150))
 
 def calc_all(h_l, a_l):
-    # Διασφάλιση ότι οι τιμές δεν είναι μηδέν για την Poisson
     h_l, a_l = max(0.1, h_l), max(0.1, a_l)
     p1 = sum([poisson.pmf(i, h_l) * sum([poisson.pmf(j, a_l) for j in range(i)]) for i in range(1, 10)])
     px = sum([poisson.pmf(i, h_l) * poisson.pmf(i, a_l) for i in range(10)])
@@ -57,14 +55,19 @@ sel_league_name = st.sidebar.selectbox("Πρωτάθλημα:", list(LEAGUES.val
 top_picks = st.sidebar.toggle("🔥 TOP PICKS")
 sel_code = [k for k, v in LEAGUES.items() if v == sel_league_name][0]
 
-# --- ΠΙΝΑΚΑΣ ΒΑΘΜΟΛΟΓΙΑΣ (GOOGLE STYLE) ---
+# --- ΠΙΝΑΚΑΣ ΒΑΘΜΟΛΟΓΙΑΣ ΜΕ ΣΗΜΑΤΑ (SIDEBAR) ---
 st.sidebar.markdown(f"### 🏆 {sel_league_name} Table")
 st_data = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_code}/standings")
 standings_list = []
 if st_data and 'standings' in st_data:
     standings_list = st_data['standings'][0]['table']
-    df_list = [{"#": t['position'], "Ομάδα": t['team']['shortName'], "Β": t['points']} for t in standings_list]
-    st.sidebar.table(pd.DataFrame(df_list).set_index('#'))
+    for t in standings_list:
+        # Εδώ φτιάχνουμε τις στήλες για να μπει το σήμα εκεί που έδειξες
+        col_pos, col_img, col_name, col_pts = st.sidebar.columns([1, 1.5, 5, 2])
+        col_pos.write(f"{t['position']}")
+        col_img.image(t['team']['crest'], width=18)
+        col_name.write(f"{t['team']['shortName']}")
+        col_pts.write(f"**{t['points']}**")
 
 # --- ΚΥΡΙΟ ΠΑΝΕΛ ---
 st.title(f"⚽ Predictions: {sel_league_name}")
@@ -95,20 +98,20 @@ for m in display_m:
         # ΦΟΡΜΑ ΟΡΙΖΟΝΤΙΑ (ICON ΔΙΠΛΑ ΣΤΟ LOGO)
         for label, f_matches, t_name in [("🏠 " + h_t, h_f_data.get('matches', []), h_t), ("🚀 " + a_t, a_f_data.get('matches', []), a_t)]:
             st.write(f"**{label}**")
-            f_cols = st.columns(5)
+            f_cols = st.columns(5) # 5 στήλες για τα 5 ματς
             for i, tm in enumerate(f_matches):
                 is_h = tm['homeTeam']['name'] == t_name
                 opp_logo = tm['awayTeam']['crest'] if is_h else tm['homeTeam']['crest']
                 score = tm.get('score', {}).get('fullTime', {})
-                hg, ag = score.get('home'), score.get('away')
+                hg, ag = score.get('home', 0), score.get('away', 0)
                 icon = "🟡" if hg == ag else ("🟢" if (is_h and hg > ag) or (not is_h and ag > hg) else "🔴")
                 
                 with f_cols[i]:
-                    # Χρήση HTML για να είναι το Icon ΔΙΠΛΑ στο σήμα οριζόντια
+                    # Εικονίδιο και σήμα δίπλα-δίπλα σε οριζόντια διάταξη
                     st.markdown(f"""
-                        <div style="display: flex; align-items: center; background-color: #f0f2f6; padding: 5px; border-radius: 5px; border: 1px solid #ddd;">
-                            <span style="font-size: 18px; margin-right: 5px;">{icon}</span>
-                            <img src="{opp_logo}" width="22">
+                        <div style="display: flex; align-items: center; gap: 5px; border-right: 1px solid #ddd; padding-right: 5px;">
+                            <span>{icon}</span>
+                            <img src="{opp_logo}" width="20">
                         </div>
                     """, unsafe_allow_html=True)
             st.write("")
