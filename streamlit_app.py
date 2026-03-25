@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 st.set_page_config(page_title="Pro Football Predictor PRO", layout="wide")
 
 # --- ΡΥΘΜΙΣΕΙΣ API ---
-API_KEY = "a963742bcd5642afbe8c842d057f25ad" # Βάλε το κλειδί που δουλεύει
+API_KEY = "ΤΟ_ΚΛΕΙΔΙ_ΣΟΥ_ΕΔΩ" # Βάλε το κλειδί που δουλεύει
 
 LEAGUES = {
     'PL': 'Premier League',
@@ -18,19 +18,20 @@ LEAGUES = {
     'PPL': 'Primeira Liga'
 }
 
-def get_form_string(team_name, matches):
+def get_form_string(team_name, matches_list):
+    if not matches_list:
+        return "N/A", ["Δεν βρέθηκαν πρόσφατα ματς"]
     form = []
     details = []
-    for m in matches:
-        if m['status'] != 'FINISHED': continue
+    for m in matches_list:
+        if m.get('status') != 'FINISHED': continue
         is_home = m['homeTeam']['name'] == team_name
         opp = m['awayTeam']['name'] if is_home else m['homeTeam']['name']
-        res = m['score']['fullTime']
-        h_g, a_g = res['home'], res['away']
+        score = m.get('score', {}).get('fullTime', {})
+        h_g, a_g = score.get('home'), score.get('away')
         
         if h_g is None or a_g is None: continue
         
-        # Result logic
         if h_g == a_g: 
             icon, txt = "🟡", f"Ισοπαλία {h_g}-{a_g} με {opp}"
         elif (is_home and h_g > a_g) or (not is_home and a_g > h_g):
@@ -41,13 +42,18 @@ def get_form_string(team_name, matches):
         form.append(icon)
         details.append(txt)
         if len(form) == 5: break
-    return "".join(form), details
+    return "".join(form) if form else "N/A", details
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=300)
 def fetch_data(url):
     headers = {'X-Auth-Token': API_KEY}
-    res = requests.get(url, headers=headers)
-    return res.json() if res.status_code == 200 else {}
+    try:
+        res = requests.get(url, headers=headers)
+        if res.status_code == 200:
+            return res.json()
+    except:
+        pass
+    return {}
 
 def calc_all(h_l, a_l):
     p1 = sum([poisson.pmf(i, h_l) * sum([poisson.pmf(j, a_l) for j in range(i)]) for i in range(1, 10)])
@@ -60,7 +66,6 @@ def calc_all(h_l, a_l):
 
 st.title("⚽ Pro Predictor & Form Tracker")
 
-# SIDEBAR
 st.sidebar.header("📍 Επιλογές")
 sel_league_name = st.sidebar.selectbox("Πρωτάθλημα:", list(LEAGUES.values()))
 top_picks = st.sidebar.toggle("🔥 TOP PICKS (>70%)")
@@ -72,19 +77,17 @@ data = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_league_co
 matches = data.get('matches', [])
 
 if matches:
-    for m in matches[:10]:
+    for m in matches[:12]:
         h_team = m['homeTeam']['name']
         a_team = m['awayTeam']['name']
         h_id = m['homeTeam']['id']
         a_id = m['awayTeam']['id']
         
-        # Προβλέψεις (Poisson)
         p1, px, p2, pgg, po15, po25 = calc_all(1.7, 1.2)
         
         if top_picks and not (p1 > 0.7 or p2 > 0.7 or po25 > 0.7): continue
 
         with st.expander(f"⭐ {h_team} vs {a_team}"):
-            # Stats Columns
             c1, c2, c3 = st.columns(3)
             c1.metric("1", f"{round(p1*100)}%")
             c2.metric("X", f"{round(px*100)}%")
@@ -97,25 +100,23 @@ if matches:
             
             st.divider()
             
-            # Φόρμα Ομάδων (Χρειάζεται έξτρα κλήση - Προσοχή στο όριο!)
             st.subheader("📊 Τελευταία 5 Ματς")
             col_h, col_a = st.columns(2)
             
-            # Εδώ τραβάμε τα αποτελέσματα για κάθε ομάδα
-            h_data = fetch_data(f"https://api.football-data.org/v4/teams/{h_id}/matches?status=FINISHED&limit=5")
-            a_data = fetch_data(f"https://api.football-data.org/v4/teams/{a_id}/matches?status=FINISHED&limit=5")
+            h_data = fetch_data(f"https://api.football-data.org/v4/teams/{h_id}/matches?status=FINISHED&limit=10")
+            a_data = fetch_data(f"https://api.football-data.org/v4/teams/{a_id}/matches?status=FINISHED&limit=10")
             
             f_h, d_h = get_form_string(h_team, h_data.get('matches', []))
             f_a, d_a = get_form_string(a_team, a_data.get('matches', []))
             
             with col_h:
                 st.write(f"**{h_team}**")
-                st.large_caption(f_h)
-                for d in d_h: st.write(f"· {d}")
+                st.markdown(f"### {f_h}")
+                for d in d_h: st.caption(d)
             
             with col_a:
                 st.write(f"**{a_team}**")
-                st.large_caption(f_a)
-                for d in d_a: st.write(f"· {d}")
+                st.markdown(f"### {f_a}")
+                for d in d_a: st.caption(d)
 else:
-    st.info("Δεν βρέθηκαν προσεχείς αγώνες. Δοκίμασε άλλο πρωτάθλημα.")
+    st.info("Δεν βρέθηκαν προσεχείς αγώνες.")
