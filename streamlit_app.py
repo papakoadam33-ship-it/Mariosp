@@ -18,20 +18,25 @@ def fetch_data(url):
         return res.json() if res.status_code == 200 else {}
     except: return {}
 
+# --- ΥΠΟΛΟΓΙΣΜΟΙ ---
 def get_advanced_stats(matches, team_name, standings):
     if not matches: return 1.2
     total_goals = 0
     strength_points = 0
     ranks = {t['team']['name']: t['position'] for t in standings} if standings else {}
+    
     for m in matches:
         is_h = m['homeTeam']['name'] == team_name
         score = m.get('score', {}).get('fullTime', {})
         g = score.get('home') if is_h else score.get('away')
         if g is not None: total_goals += g
-        opp_rank = ranks.get(m['awayTeam']['name'] if is_h else m['homeTeam']['name'], 10)
+        
+        opp_name = m['awayTeam']['name'] if is_h else m['homeTeam']['name']
+        opp_rank = ranks.get(opp_name, 10)
         if (is_h and score.get('home', 0) > score.get('away', 0)) or \
            (not is_h and score.get('away', 0) > score.get('home', 0)):
             strength_points += (21 - opp_rank)
+
     avg_goals = total_goals / len(matches) if len(matches) > 0 else 1.2
     return max(0.5, avg_goals + (strength_points / 150))
 
@@ -39,40 +44,33 @@ def calc_all(h_l, a_l):
     h_l, a_l = max(0.1, h_l), max(0.1, a_l)
     p1 = sum([poisson.pmf(i, h_l) * sum([poisson.pmf(j, a_l) for j in range(i)]) for i in range(1, 10)])
     px = sum([poisson.pmf(i, h_l) * poisson.pmf(i, a_l) for i in range(10)])
-    p2, pgg = max(0, 1 - p1 - px), (1 - poisson.pmf(0, h_l)) * (1 - poisson.pmf(0, a_l))
+    p2 = max(0, 1 - p1 - px)
+    pgg = (1 - poisson.pmf(0, h_l)) * (1 - poisson.pmf(0, a_l))
+    # Προσθήκη Over 1.5 & 2.5
     po15 = 1 - sum([poisson.pmf(i, h_l + a_l) for i in range(2)])
     po25 = 1 - sum([poisson.pmf(i, h_l + a_l) for i in range(3)])
     return p1, px, p2, pgg, po15, po25
 
-# --- SIDEBAR: ΧΕΙΡΟΠΟΙΗΤΟΣ ΠΙΝΑΚΑΣ ΓΙΑ ΝΑ ΦΑΙΝΟΝΤΑΙ ΤΑ ΣΗΜΑΤΑ ---
+# --- SIDEBAR ---
 st.sidebar.title("📍 Ρυθμίσεις")
 sel_league_name = st.sidebar.selectbox("Πρωτάθλημα:", list(LEAGUES.values()))
 top_picks = st.sidebar.toggle("🔥 TOP PICKS")
 sel_code = [k for k, v in LEAGUES.items() if v == sel_league_name][0]
 
+# --- ΒΑΘΜΟΛΟΓΙΑ ---
 st.sidebar.markdown(f"### 🏆 {sel_league_name} Table")
 st_data = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_code}/standings")
 standings_list = []
-
 if st_data and 'standings' in st_data:
     standings_list = st_data['standings'][0]['table']
-    # Επικεφαλίδες "Πίνακα"
-    h_col1, h_col2, h_col3, h_col4 = st.sidebar.columns([1, 1.2, 5, 2])
-    h_col1.caption("#")
-    h_col2.caption("S")
-    h_col3.caption("Team")
-    h_col4.caption("Pts")
-    
     for t in standings_list:
-        # Εδώ φτιάχνουμε τις γραμμές του πίνακα μία-μία
         c1, c2, c3, c4 = st.sidebar.columns([1, 1.2, 5, 2])
         c1.write(f"{t['position']}")
-        c2.image(t['team']['crest'], width=18) # ΕΔΩ ΕΙΝΑΙ ΤΟ ΣΗΜΑ (Όχι γράμματα!)
+        c2.image(t['team']['crest'], width=18)
         c3.write(f"{t['team']['shortName']}")
         c4.write(f"**{t['points']}**")
-    st.sidebar.divider()
 
-# --- ΚΥΡΙΟ ΠΑΝΕΛ ---
+# --- MAIN ---
 st.title(f"⚽ Predictions: {sel_league_name}")
 all_data = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_code}/matches")
 all_m = all_data.get('matches', [])
@@ -84,14 +82,18 @@ for m in display_m:
     h_f_data = fetch_data(f"https://api.football-data.org/v4/teams/{h_id}/matches?status=FINISHED&limit=5")
     a_f_data = fetch_data(f"https://api.football-data.org/v4/teams/{a_id}/matches?status=FINISHED&limit=5")
     
-    p1, px, p2, pgg, po15, po25 = calc_all(get_advanced_stats(h_f_data.get('matches', []), h_t, standings_list), get_advanced_stats(a_f_data.get('matches', []), a_t, standings_list))
+    h_l = get_advanced_stats(h_f_data.get('matches', []), h_t, standings_list)
+    a_l = get_advanced_stats(a_f_data.get('matches', []), a_t, standings_list)
+    
+    p1, px, p2, pgg, po15, po25 = calc_all(h_l, a_l)
     if top_picks and not (p1 > 0.65 or p2 > 0.65 or po25 > 0.65): continue
 
     with st.expander(f"⭐ {m['utcDate'][:10]} | {h_t} vs {a_t}"):
         cols = st.columns(6)
         lbls = ["1", "X", "2", "GG", "O1.5", "O2.5"]
         vals = [p1, px, p2, pgg, po15, po25]
-        for i in range(6): cols[i].metric(lbls[i], f"{round(vals[i]*100)}%")
+        for i in range(6):
+            cols[i].metric(lbls[i], f"{round(vals[i]*100)}%")
 
         st.divider()
         for label, f_matches, t_name in [("🏠 " + h_t, h_f_data.get('matches', []), h_t), ("🚀 " + a_t, a_f_data.get('matches', []), a_t)]:
@@ -105,3 +107,5 @@ for m in display_m:
                 icon = "🟡" if hg == ag else ("🟢" if (is_h and hg > ag) or (not is_h and ag > hg) else "🔴")
                 with f_cols[i]:
                     st.markdown(f'<div style="display: flex; align-items: center; gap: 5px;"><span>{icon}</span><img src="{opp_logo}" width="20"></div>', unsafe_allow_html=True)
+            st.write("")
+
