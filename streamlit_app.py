@@ -46,31 +46,32 @@ def calc_all(h_l, a_l):
     px = sum([poisson.pmf(i, h_l) * poisson.pmf(i, a_l) for i in range(10)])
     p2 = max(0, 1 - p1 - px)
     pgg = (1 - poisson.pmf(0, h_l)) * (1 - poisson.pmf(0, a_l))
-    # Προσθήκη Over 1.5 & 2.5
     po15 = 1 - sum([poisson.pmf(i, h_l + a_l) for i in range(2)])
     po25 = 1 - sum([poisson.pmf(i, h_l + a_l) for i in range(3)])
     return p1, px, p2, pgg, po15, po25
 
-# --- SIDEBAR ---
+# --- SIDEBAR: Ο ΠΑΛΙΟΣ ΑΠΛΟΣ ΠΙΝΑΚΑΣ ---
 st.sidebar.title("📍 Ρυθμίσεις")
 sel_league_name = st.sidebar.selectbox("Πρωτάθλημα:", list(LEAGUES.values()))
 top_picks = st.sidebar.toggle("🔥 TOP PICKS")
 sel_code = [k for k, v in LEAGUES.items() if v == sel_league_name][0]
 
-# --- ΒΑΘΜΟΛΟΓΙΑ ---
 st.sidebar.markdown(f"### 🏆 {sel_league_name} Table")
 st_data = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_code}/standings")
 standings_list = []
 if st_data and 'standings' in st_data:
     standings_list = st_data['standings'][0]['table']
+    # Δημιουργία DataFrame για τον απλό πίνακα χωρίς εικόνες
+    df_data = []
     for t in standings_list:
-        c1, c2, c3, c4 = st.sidebar.columns([1, 1.2, 5, 2])
-        c1.write(f"{t['position']}")
-        c2.image(t['team']['crest'], width=18)
-        c3.write(f"{t['team']['shortName']}")
-        c4.write(f"**{t['points']}**")
+        df_data.append({
+            "Pos": t['position'],
+            "Team": t['team']['shortName'],
+            "Pts": t['points']
+        })
+    st.sidebar.table(pd.DataFrame(df_data).set_index('Pos'))
 
-# --- MAIN ---
+# --- MAIN PANEL ---
 st.title(f"⚽ Predictions: {sel_league_name}")
 all_data = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_code}/matches")
 all_m = all_data.get('matches', [])
@@ -96,6 +97,7 @@ for m in display_m:
             cols[i].metric(lbls[i], f"{round(vals[i]*100)}%")
 
         st.divider()
+        # ΦΟΡΜΑ ΟΡΙΖΟΝΤΙΑ (ICON ΔΙΠΛΑ ΣΤΟ LOGO)
         for label, f_matches, t_name in [("🏠 " + h_t, h_f_data.get('matches', []), h_t), ("🚀 " + a_t, a_f_data.get('matches', []), a_t)]:
             st.write(f"**{label}**")
             f_cols = st.columns(5)
@@ -108,4 +110,3 @@ for m in display_m:
                 with f_cols[i]:
                     st.markdown(f'<div style="display: flex; align-items: center; gap: 5px;"><span>{icon}</span><img src="{opp_logo}" width="20"></div>', unsafe_allow_html=True)
             st.write("")
-
