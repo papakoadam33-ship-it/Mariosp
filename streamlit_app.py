@@ -7,7 +7,7 @@ st.set_page_config(page_title="Pro Football Predictor", layout="wide")
 # --- API CONFIG ---
 API_KEY = "a963742bcd5642afbe8c842d057f25ad" 
 
-LEAGUES = {'PL':'Premier League','PD':'La Liga','BL1':'Bundesliga','SA':'Serie A','FL1':'Ligue 1'}
+LEAGUES = {'PL':'Premier League','PD':'La Liga','BL1':'Bundesliga','SA':'Serie A', 'FL1':'Ligue 1'}
 
 @st.cache_data(ttl=600)
 def fetch_data(url):
@@ -32,19 +32,33 @@ sel_league_name = st.sidebar.selectbox("Πρωτάθλημα:", list(LEAGUES.val
 top_picks = st.sidebar.toggle("🔥 TOP PICKS")
 sel_code = [k for k, v in LEAGUES.items() if v == sel_league_name][0]
 
-# --- SIDEBAR: COMPACT ΒΑΘΜΟΛΟΓΙΑ ---
+# --- SIDEBAR: ΟΡΙΖΟΝΤΙΑ ΒΑΘΜΟΛΟΓΙΑ (ΠΙΝΑΚΑΣ) ---
 st.sidebar.markdown(f"### 🏆 {sel_league_name}")
-st.sidebar.caption("Ομάδα | Θέση | Βαθ")
-st_data = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_code}/standings")
 
+# Επικεφαλίδες Πίνακα
+h1, h2, h3 = st.sidebar.columns([5, 2, 2])
+h1.caption("ΟΜΑΔΑ")
+h2.caption("ΘΕΣΗ")
+h3.caption("ΒΑΘ")
+st.sidebar.markdown("---")
+
+st_data = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_code}/standings")
 if st_data and 'standings' in st_data:
     for team in st_data['standings'][0]['table']:
-        # Οριζόντια διάταξη σε μία γραμμή για εξοικονόμηση χώρου
-        col_img, col_txt, col_pos, col_pts = st.sidebar.columns([1.5, 4, 1.5, 1.5])
-        col_img.image(team['team']['crest'], width=20)
-        col_txt.write(f"**{team['team']['shortName']}**")
-        col_pos.write(f"#{team['position']}")
-        col_pts.write(f"{team['points']}")
+        # Όλα σε μία γραμμή (Οριζόντια)
+        c_name, c_pos, c_pts = st.sidebar.columns([5, 2, 2])
+        
+        # Κουτί 1: Σήμα + Όνομα
+        with c_name:
+            st.markdown(f"<img src='{team['team']['crest']}' width='18'> **{team['team']['shortName']}**", unsafe_allow_html=True)
+        
+        # Κουτί 2: Θέση (με γραμμή αριστερά)
+        c_pos.write(f"| #{team['position']}")
+        
+        # Κουτί 3: Βαθμοί (με γραμμή αριστερά)
+        c_pts.write(f"| **{team['points']}**")
+        
+        st.sidebar.markdown("<hr style='margin:2px 0; opacity:0.2'>", unsafe_allow_html=True)
 
 # --- ΚΥΡΙΟ ΠΑΝΕΛ ---
 st.title(f"⚽ {sel_league_name} Predictions")
@@ -60,7 +74,6 @@ for m in display_matches:
     if top_picks and not (p1 > 0.7 or p2 > 0.7 or po25 > 0.7): continue
 
     with st.expander(f"⭐ {m['utcDate'][:10]} | {h_t} vs {a_t}"):
-        # Metrics οριζόντια
         m_cols = st.columns(6)
         m_labels = ["1", "X", "2", "G/G", "O1.5", "O2.5"]
         m_vals = [p1, px, p2, pgg, po15, po25]
@@ -69,23 +82,22 @@ for m in display_matches:
 
         st.divider()
         
-        # ΦΟΡΜΑ ΟΡΙΖΟΝΤΙΑ
-        h_d = fetch_data(f"https://api.football-data.org/v4/teams/{h_id}/matches?status=FINISHED&limit=5")
-        a_d = fetch_data(f"https://api.football-data.org/v4/teams/{a_id}/matches?status=FINISHED&limit=5")
-
-        for title, team_matches, team_name in [("🏠 " + h_t, h_d, h_t), ("🚀 " + a_t, a_d, a_t)]:
+        # ΦΟΡΜΑ ΟΡΙΖΟΝΤΙΑ (5 ΣΕ ΜΙΑ ΣΕΙΡΑ)
+        for title, team_id, team_name in [("🏠 " + h_t, h_id, h_t), ("🚀 " + a_t, a_id, a_t)]:
             st.write(f"**{title}**")
-            f_cols = st.columns(10) # 5 για εικονίδια + 5 για logos
+            t_matches = fetch_data(f"https://api.football-data.org/v4/teams/{team_id}/matches?status=FINISHED&limit=5")
+            
+            # Φτιάχνουμε 5 κουτάκια οριζόντια
+            f_cols = st.columns(5)
             idx = 0
-            for tm in team_matches.get('matches', []):
+            for tm in t_matches.get('matches', []):
                 is_h = tm['homeTeam']['name'] == team_name
                 opp_logo = tm['awayTeam']['crest'] if is_h else tm['homeTeam']['crest']
                 score = tm.get('score', {}).get('fullTime', {})
                 hg, ag = score.get('home'), score.get('away')
                 icon = "🟡" if hg == ag else ("🟢" if (is_h and hg > ag) or (not is_h and ag > hg) else "🔴")
                 
-                # Βάζουμε εικονίδιο και logo δίπλα-δίπλα οριζόντια
-                f_cols[idx].write(icon)
-                f_cols[idx+1].image(opp_logo, width=18)
-                idx += 2
-            st.write("") # κενό ανάμεσα στις ομάδες
+                with f_cols[idx]:
+                    st.markdown(f"{icon}<br><img src='{opp_logo}' width='20'>", unsafe_allow_html=True)
+                idx += 1
+            st.write("")
