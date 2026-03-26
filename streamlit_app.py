@@ -19,21 +19,15 @@ def fetch_data(url):
 def get_advanced_stats(matches, team_name, standings):
     if not matches: return 1.2
     total_goals = 0
-    # Βρίσκουμε τη θέση της ομάδας για το "Quality Bonus"
     ranks = {t['team']['name']: t['position'] for t in standings} if standings else {}
     current_rank = ranks.get(team_name, 10)
-    
-    # Bonus βάσει θέσης: Όσο πιο ψηλά, τόσο μεγαλύτερο το "λ" (επιθετική ισχύς)
-    quality_bonus = (21 - current_rank) / 20  # π.χ. η 1η ομάδα παίρνει +1.0, η 20η παίρνει +0.05
-    
+    quality_bonus = (21 - current_rank) / 20 
     for m in matches:
         is_h = m['homeTeam']['name'] == team_name
         score = m.get('score', {}).get('fullTime', {})
         g = score.get('home') if is_h else score.get('away')
         if g is not None: total_goals += g
-
     avg_goals = total_goals / len(matches) if len(matches) > 0 else 1.2
-    # Τελικό σκορ: Μέσος όρος γκολ + Bonus Ποιότητας (Βαθμολογία)
     return max(0.5, (avg_goals * 0.6) + (quality_bonus * 0.4)) 
 
 def calc_all(h_l, a_l):
@@ -46,51 +40,52 @@ def calc_all(h_l, a_l):
     po25 = 1 - sum([poisson.pmf(i, h_l + a_l) for i in range(3)])
     return p1, px, p2, pgg, po15, po25
 
-# --- SIDEBAR (BACK TO BASICS) ---
+# --- SIDEBAR ---
 st.sidebar.title("📍 Ρυθμίσεις")
 sel_league_name = st.sidebar.selectbox("Πρωτάθλημα:", list(LEAGUES.values()))
-top_picks = st.sidebar.toggle("🔥 TOP PICKS")
+parlay_btn = st.sidebar.button("🎯 Δημιουργία Δελτίου (Top Picks)")
 sel_code = [k for k, v in LEAGUES.items() if v == sel_league_name][0]
 
-st.sidebar.markdown(f"### 🏆 {sel_league_name} Table")
 st_data = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_code}/standings")
-standings_list = []
-if st_data and 'standings' in st_data:
-    standings_list = st_data['standings'][0]['table']
+standings_list = st_data.get('standings', [{}])[0].get('table', []) if st_data else []
+
+if standings_list:
+    st.sidebar.markdown(f"### 🏆 {sel_league_name} Table")
     df_data = [{"Pos": t['position'], "Team": t['team']['shortName'], "Pts": t['points']} for t in standings_list]
     st.sidebar.table(pd.DataFrame(df_data).set_index('Pos'))
 
-# --- MAIN PANEL ---
+# --- MAIN ---
 st.title(f"⚽ Predictions: {sel_league_name}")
+
 all_m = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_code}/matches").get('matches', [])
 display_m = [m for m in all_m if m['status'] in ['SCHEDULED', 'TIMED', 'LIVE', 'IN_PLAY']][:15]
-if not display_m: display_m = [m for m in all_m if m['status'] == 'FINISHED'][-10:]
+
+top_parlay_list = []
 
 for m in display_m:
     h_t, a_t, h_id, a_id = m['homeTeam']['name'], m['awayTeam']['name'], m['homeTeam']['id'], m['awayTeam']['id']
     h_f = fetch_data(f"https://api.football-data.org/v4/teams/{h_id}/matches?status=FINISHED&limit=5")
     a_f = fetch_data(f"https://api.football-data.org/v4/teams/{a_id}/matches?status=FINISHED&limit=5")
     
-    h_l = get_advanced_stats(h_f.get('matches', []), h_t, standings_list)
-    a_l = get_advanced_stats(a_f.get('matches', []), a_t, standings_list)
+    p1, px, p2, pgg, po15, po25 = calc_all(get_advanced_stats(h_f.get('matches', []), h_t, standings_list), get_advanced_stats(a_f.get('matches', []), a_t, standings_list))
     
-    p1, px, p2, pgg, po15, po25 = calc_all(h_l, a_l)
-    if top_picks and not (p1 > 0.65 or p2 > 0.65 or po25 > 0.65): continue
+    # Προσθήκη στα Top Picks αν η πιθανότητα είναι > 70%
+    if p1 > 0.70: top_parlay_list.append({"match": f"{h_t} - {a_t}", "tip": "1", "prob": p1})
+    elif p2 > 0.70: top_parlay_list.append({"match": f"{h_t} - {a_t}", "tip": "2", "prob": p2})
+    elif po15 > 0.80: top_parlay_list.append({"match": f"{h_t} - {a_t}", "tip": "Over 1.5", "prob": po15})
 
-    with st.expander(f"⭐ {m['utcDate'][:10]} | {h_t} vs {a_t}"):
+    # (Εδώ μπαίνει ο κώδικας του Expander που είχαμε στον v16.7 για να βλέπεις τα ματς ένα-ένα)
+    with st.expander(f"⭐ {h_t} vs {a_t}"):
         cols = st.columns(6)
-        lbls = ["1", "X", "2", "GG", "O1.5", "O2.5"]
-        vals = [p1, px, p2, pgg, po15, po25]
+        lbls, vals = ["1", "X", "2", "GG", "O1.5", "O2.5"], [p1, px, p2, pgg, po15, po25]
         for i in range(6): cols[i].metric(lbls[i], f"{round(vals[i]*100)}%")
-        st.divider()
-        for label, f_matches, t_name in [("🏠 " + h_t, h_f.get('matches', []), h_t), ("🚀 " + a_t, a_f.get('matches', []), a_t)]:
-            st.write(f"**{label}**")
-            f_cols = st.columns(5)
-            for i, tm in enumerate(f_matches):
-                is_h = tm['homeTeam']['name'] == t_name
-                opp_logo = tm['awayTeam']['crest'] if is_h else tm['homeTeam']['crest']
-                score = tm.get('score', {}).get('fullTime', {})
-                hg, ag = score.get('home', 0), score.get('away', 0)
-                icon = "🟡" if hg == ag else ("🟢" if (is_h and hg > ag) or (not is_h and ag > hg) else "🔴")
-                with f_cols[i]:
-                    st.markdown(f'<div style="display: flex; align-items: center; gap: 5px;"><span>{icon}</span><img src="{opp_logo}" width="20"></div>', unsafe_allow_html=True)
+
+# --- PARLAY SECTION ---
+if parlay_btn and top_parlay_list:
+    st.success("### 🎯 Το Δελτίο της Ημέρας")
+    total_odds = 1.0
+    for pick in top_parlay_list:
+        est_odd = round(1 / pick['prob'], 2) # Υπολογισμός απόδοσης βάσει πιθανότητας
+        total_odds *= est_odd
+        st.write(f"✅ **{pick['match']}** -> Σημείο: `{pick['tip']}` (Απόδοση: {est_odd})")
+    st.info(f"🔥 **Συνολική Απόδοση: {round(total_odds, 2)}**")
