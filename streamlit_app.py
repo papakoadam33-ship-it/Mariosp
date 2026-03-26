@@ -6,8 +6,16 @@ import pandas as pd
 st.set_page_config(page_title="Pro Football Predictor", layout="wide")
 
 API_KEY = "a963742bcd5642afbe8c842d057f25ad" 
-LEAGUES = {'PL':'Premier League','PD':'La Liga', 'BL1':'Bundesliga', 'SA':'Serie A', 'FL1':'Ligue 1'}
-
+LEAGUES = LEAGUES = {
+    'PL': 'Premier League',
+    'PD': 'La Liga',
+    'BL1': 'Bundesliga',
+    'SA': 'Serie A',
+    'FL1': 'Ligue 1',
+    'CL': 'Champions League',
+    'DED': 'Eredivisie',
+    'ELC': 'Championship'
+}
 @st.cache_data(ttl=300)
 def fetch_data(url):
     headers = {'X-Auth-Token': API_KEY}
