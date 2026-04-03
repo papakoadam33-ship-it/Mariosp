@@ -32,12 +32,17 @@ def get_advanced_stats(matches, team_name, standings):
     ranks = {t['team']['name']: t['position'] for t in standings} if standings else {}
     current_rank = ranks.get(team_name, 10)
     quality_bonus = (21 - current_rank) / 20 
+    
+    valid_matches = 0
     for m in matches:
         score = m.get('score', {}).get('fullTime', {})
-        is_h = m['homeTeam']['name'] == team_name
-        g = score.get('home') if is_h else score.get('away')
-        if g is not None: total_goals += g
-    avg_goals = total_goals / len(matches) if len(matches) > 0 else 1.2
+        if score.get('home') is not None:
+            is_h = m['homeTeam']['name'] == team_name
+            g = score.get('home') if is_h else score.get('away')
+            total_goals += g
+            valid_matches += 1
+            
+    avg_goals = total_goals / valid_matches if valid_matches > 0 else 1.2
     return max(0.5, (avg_goals * 0.6) + (quality_bonus * 0.4)) 
 
 def calc_all(h_l, a_l):
@@ -78,14 +83,20 @@ if not display_m:
 else:
     for m in display_m:
         h_t, a_t, h_id, a_id = m['homeTeam']['name'], m['awayTeam']['name'], m['homeTeam']['id'], m['awayTeam']['id']
-        date_str = m['utcDate'][:10] # ΗΜΕΡΟΜΗΝΙΑ
+        date_str = m['utcDate'][:10]
         
-        h_f = fetch_data(f"https://api.football-data.org/v4/teams/{h_id}/matches?status=FINISHED&limit=5")
-        a_f = fetch_data(f"https://api.football-data.org/v4/teams/{a_id}/matches?status=FINISHED&limit=5")
+        # ΔΙΟΡΘΩΣΗ: Προσθήκη ανταγωνισμού στο URL για να φέρνει τα σωστά ματς της ομάδας
+        h_f_data = fetch_data(f"https://api.football-data.org/v4/teams/{h_id}/matches?status=FINISHED&limit=10&competitions={sel_code}")
+        a_f_data = fetch_data(f"https://api.football-data.org/v4/teams/{a_id}/matches?status=FINISHED&limit=10&competitions={sel_code}")
         
-        p1, px, p2, pgg, po15, po25 = calc_all(get_advanced_stats(h_f.get('matches', []), h_t, standings_list), get_advanced_stats(a_f.get('matches', []), a_t, standings_list))
+        h_f_matches = h_f_data.get('matches', [])[:5]
+        a_f_matches = a_f_data.get('matches', [])[:5]
+        
+        p1, px, p2, pgg, po15, po25 = calc_all(
+            get_advanced_stats(h_f_matches, h_t, standings_list), 
+            get_advanced_stats(a_f_matches, a_t, standings_list)
+        )
 
-        # Συλλογή για το Δελτίο
         if p1 > 0.70: top_picks.append({"m": f"{h_t} - {a_t}", "t": "1", "p": p1})
         elif p2 > 0.70: top_picks.append({"m": f"{h_t} - {a_t}", "t": "2", "p": p2})
         elif po15 > 0.85: top_picks.append({"m": f"{h_t} - {a_t}", "t": "Over 1.5", "p": po15})
@@ -96,20 +107,21 @@ else:
             for i in range(6): cols[i].metric(lbls[i], f"{round(vals[i]*100)}%")
             
             st.divider()
-            # Η ΦΟΡΜΑ ΠΟΥ ΕΛΕΙΠΕ
-            for label, f_matches, t_name in [("🏠 " + h_t, h_f.get('matches', []), h_t), ("🚀 " + a_t, a_f.get('matches', []), a_t)]:
+            for label, f_matches, t_name in [("🏠 " + h_t, h_f_matches, h_t), ("🚀 " + a_t, a_f_matches, a_t)]:
                 st.write(f"**{label}**")
-                f_cols = st.columns(5)
-                for i, tm in enumerate(f_matches):
-                    is_h = tm['homeTeam']['name'] == t_name
-                    opp_logo = tm['awayTeam']['crest'] if is_h else tm['homeTeam']['crest']
-                    score = tm.get('score', {}).get('fullTime', {})
-                    hg, ag = score.get('home', 0), score.get('away', 0)
-                    icon = "🟡" if hg == ag else ("🟢" if (is_h and hg > ag) or (not is_h and ag > hg) else "🔴")
-                    with f_cols[i]:
-                        st.markdown(f'<div style="display: flex; align-items: center; gap: 5px;"><span>{icon}</span><img src="{opp_logo}" width="20"></div>', unsafe_allow_html=True)
+                if not f_matches:
+                    st.caption("Δεν βρέθηκαν πρόσφατα ματς.")
+                else:
+                    f_cols = st.columns(5)
+                    for i, tm in enumerate(f_matches):
+                        is_h = tm['homeTeam']['name'] == t_name
+                        opp_logo = tm['awayTeam']['crest'] if is_h else tm['homeTeam']['crest']
+                        score = tm.get('score', {}).get('fullTime', {})
+                        hg, ag = score.get('home', 0), score.get('away', 0)
+                        icon = "🟡" if hg == ag else ("🟢" if (is_h and hg > ag) or (not is_h and ag > hg) else "🔴")
+                        with f_cols[i]:
+                            st.markdown(f'<div style="display: flex; align-items: center; gap: 5px;"><span>{icon}</span><img src="{opp_logo}" width="20"></div>', unsafe_allow_html=True)
 
-# ΕΜΦΑΝΙΣΗ ΔΕΛΤΙΟΥ ΣΤΟ ΤΕΛΟΣ Η ΣΤΗΝ ΑΡΧΗ
 if parlay_mode and top_picks:
     st.sidebar.success("### 🎯 Το Δελτίο σου")
     total_odds = 1.0
