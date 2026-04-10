@@ -25,7 +25,6 @@ st.markdown("""
         margin: 40px 0 20px 0;
     }
     
-    /* Διορθωμένα κουτάκια: Πιο μαζεμένα */
     .prediction-box {
         background: rgba(255, 255, 255, 0.08) !important; 
         padding: 8px 5px; 
@@ -104,27 +103,37 @@ for i, m in enumerate(display_m):
     p2 = max(0, 1 - p1 - px)
     
     current_total = h_score + a_score
-    po15 = 1 - sum([poisson.pmf(k, h_l + a_l) for k in range(max(0, 2 - current_total))])
-    po25 = 1 - sum([poisson.pmf(k, h_l + a_l) for k in range(max(0, 3 - current_total))])
-    pgg = (1-poisson.pmf(0, h_l + (1 if h_score > 0 else 0))) * (1-poisson.pmf(0, a_l + (1 if a_score > 0 else 0)))
+    po15_val = 1 - sum([poisson.pmf(k, h_l + a_l) for k in range(max(0, 2 - current_total))])
+    po25_val = 1 - sum([poisson.pmf(k, h_l + a_l) for k in range(max(0, 3 - current_total))])
+    pgg_val = (1-poisson.pmf(0, h_l + (1 if h_score > 0 else 0))) * (1-poisson.pmf(0, a_l + (1 if a_score > 0 else 0)))
 
-    # ΔΙΟΡΘΩΣΗ: Καθαρός τίτλος χωρίς HTML tags και επαναφορά ημερομηνίας
-    live_str = f"LIVE {h_score}-{a_score} | " if is_live else ""
-    title = f"{live_str}📅 {m['utcDate'][:10]} | {m['homeTeam']['shortName']} vs {m['awayTeam']['shortName']}"
+    # Έλεγχος αν έχουν ήδη συμβεί (Checkmark Logic)
+    is_gg = h_score > 0 and a_score > 0
+    is_o15 = current_total > 1
+    is_o25 = current_total > 2
+
+    # Τίτλος: Live (emoji + score) ή Προγραμματισμένο (ημερομηνία)
+    if is_live:
+        title = f"🔴 LIVE {h_score}-{a_score} | {m['homeTeam']['shortName']} vs {m['awayTeam']['shortName']}"
+    else:
+        title = f"📅 {m['utcDate'][:10]} | {m['homeTeam']['shortName']} vs {m['awayTeam']['shortName']}"
     
     with st.expander(title):
-        # ΔΙΟΡΘΩΣΗ: Οι στήλες ορίζονται μία φορά για να μην αραιώνουν
         cols = st.columns(6)
-        res_list = [("1", p1), ("X", px), ("2", p2), ("GG", pgg), ("O1.5", po15), ("O2.5", po25)]
+        # Λίστα με (Label, Τιμή, Αν έχει συμβεί ήδη)
+        res_list = [
+            ("1", p1, False), ("X", px, False), ("2", p2, False), 
+            ("GG", pgg_val, is_gg), ("O1.5", po15_val, is_o15), ("O2.5", po25_val, is_o25)
+        ]
         
-        for idx, (lbl, val) in enumerate(res_list):
+        for idx, (lbl, val, happened) in enumerate(res_list):
             val_perc = min(100, max(0, round(val * 100)))
-            color = "#00ff88" if val_perc > 65 else "#ffffff"
+            display_text = "✅" if happened else f"{val_perc}%"
+            color = "#00ff88" if (happened or val_perc > 65) else "#ffffff"
             
             cols[idx].markdown(f"""
                 <div class="prediction-box">
                     <small style="color: #bbb; font-size: 12px;">{lbl}</small><br>
-                    <span style="color: {color}; font-size: 16px; font-weight: bold;">{val_perc}%</span>
+                    <span style="color: {color}; font-size: 16px; font-weight: bold;">{display_text}</span>
                 </div>
             """, unsafe_allow_html=True)
-
