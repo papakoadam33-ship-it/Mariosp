@@ -4,60 +4,55 @@ from scipy.stats import poisson
 import pandas as pd
 
 # Ρύθμιση σελίδας
-st.set_page_config(page_title="Pro Predictor Live", layout="wide")
+st.set_page_config(page_title="Pro Predictor v16.23", layout="wide")
 
-# --- CSS ΓΙΑ ΤΟ NEO DESIGN & FIXES ---
+# --- CSS ΓΙΑ ΤΟ ΤΕΛΙΚΟ DESIGN ---
 st.markdown("""
     <style>
-    /* 1. Background "The Empty Arena" */
+    /* 1. Φόντο: Επιβλητικό Άδειο Στάδιο */
     .stApp {
-        background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), 
-        url("https://images.unsplash.com/photo-1522778119026-d647f0596c20?q=80&w=2070&auto=format&fit=crop");
+        background: linear-gradient(rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.75)), 
+        url("https://images.unsplash.com/photo-1521459467264-802e2fe31199?q=80&w=2069&auto=format&fit=crop");
         background-size: cover;
         background-attachment: fixed;
     }
     
-    /* 2. Μαύρα γράμματα στο Sidebar (Για να διαβάζονται) */
-    [data-testid="stSidebar"] h1, 
-    [data-testid="stSidebar"] h2, 
-    [data-testid="stSidebar"] h3, 
-    [data-testid="stSidebar"] label,
-    [data-testid="stSidebar"] p {
+    /* 2. Μαύρα γράμματα στο Sidebar & Μαύρο Κουμπί Μενού */
+    [data-testid="stSidebar"] * {
         color: #000000 !important;
-        font-weight: bold !important;
     }
-
-    /* 3. Μαύρο κουμπί Sidebar (Αυτό που κύκλωσες) */
-    [data-testid="stHeader"] button, 
+    
+    /* Μαύρο το κουμπί (τρεις γραμμές) που ανοίγει το μενού */
+    [data-testid="stHeader"] button svg {
+        fill: #000000 !important;
+    }
     [data-testid="stSidebarCollapsedControl"] svg {
         fill: #000000 !important;
-        color: #000000 !important;
     }
 
-    /* 4. Εξαφάνιση Toolbar από τον πίνακα */
+    /* 3. Λευκοί Τίτλοι Ματς στα Expanders */
+    .streamlit-expanderHeader {
+        background-color: rgba(255, 255, 255, 0.1) !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    }
+    .streamlit-expanderHeader p {
+        color: #ffffff !important;
+        font-weight: bold !important;
+        font-size: 1.1rem !important;
+    }
+
+    /* 4. Καθαρισμός Toolbar Πίνακα */
     [data-testid="stElementToolbar"] {
         display: none !important;
     }
     
-    /* 5. Καθαρά Λευκά Γράμματα στην αρχική οθόνη */
+    /* Τίτλος Αρχικής */
     .main-title {
         color: white !important;
-        font-size: 3rem !important;
+        font-size: 2.8rem !important;
         font-weight: 800;
         text-align: center;
-        margin-bottom: 30px;
-    }
-    
-    .match-header {
-        color: white !important;
-        font-weight: 500 !important;
-    }
-
-    /* Στυλ για τα Expanders */
-    .streamlit-expanderHeader {
-        background-color: rgba(255, 255, 255, 0.1) !important;
-        border: 1px solid rgba(255, 255, 255, 0.2) !important;
-        border-radius: 10px !important;
+        text-shadow: 2px 2px 10px rgba(0,0,0,0.5);
     }
     </style>
     """, unsafe_allow_html=True)
@@ -78,20 +73,18 @@ def fetch_data(url):
         return res.json() if res.status_code == 200 else {}
     except: return {}
 
-# ΔΙΟΡΘΩΜΕΝΗ ΣΥΝΑΡΤΗΣΗ ΓΙΑ ΤΟ ΠΡΑΣΙΝΟ ΧΡΩΜΑ (>= 70%)
+# Διορθωμένο Χρώμα για το 70%+ (Πιο έντονο Πράσινο)
 def get_colored_val(val):
     perc = round(val * 100)
     if perc >= 70:
-        # Έντονο πράσινο για σιγουριά
-        return f'<span style="color: #2ecc71; font-weight: bold; font-size: 22px;">{perc}%</span>'
+        return f'<span style="color: #00ff00; font-weight: 900; font-size: 24px; text-shadow: 0 0 5px rgba(0,255,0,0.5);">{perc}%</span>'
     return f'<span style="color: white; font-size: 18px;">{perc}%</span>'
 
 # --- SIDEBAR ---
-st.sidebar.markdown("### ⚽ Predictor Menu")
-sel_league_name = st.sidebar.selectbox("Επιλογή Πρωταθλήματος:", list(LEAGUES.values()))
+st.sidebar.markdown("### ⚙️ Ρυθμίσεις & Βαθμολογία")
+sel_league_name = st.sidebar.selectbox("Πρωτάθλημα:", list(LEAGUES.values()))
 sel_code = [k for k, v in LEAGUES.items() if v == sel_league_name][0]
 
-st.sidebar.markdown(f"### 🏆 {sel_league_name} Standings")
 st_data = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_code}/standings")
 standings_dict = {}
 
@@ -106,7 +99,7 @@ if st_data and 'standings' in st_data:
     st.sidebar.dataframe(pd.DataFrame(df_sidebar), hide_index=True, use_container_width=True)
 
 # --- MAIN ---
-st.markdown(f'<div class="main-title">⚽ {sel_league_name} Analysis</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="main-title">⚽ {sel_league_name} Pro Analysis</div>', unsafe_allow_html=True)
 
 all_data = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_code}/matches")
 all_m = all_data.get('matches', [])
@@ -138,6 +131,7 @@ for m in display_m:
     else:
         title = f"🗓️ {date_str} {time_str} | {h_t} vs {a_t}"
 
+    # Expanders με λευκό τίτλο
     with st.expander(title):
         cols = st.columns(6)
         lbls = ["1", "X", "2", "GG", "O1.5", "O2.5"]
@@ -145,7 +139,7 @@ for m in display_m:
         
         for i in range(6):
             with cols[i]:
-                st.markdown(f"""<div style="text-align: center; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 10px;">
-                    <div style="color: #ccc; font-size: 14px; margin-bottom: 5px;">{lbls[i]}</div>
+                st.markdown(f"""<div style="text-align: center; background: rgba(0,0,0,0.4); padding: 10px; border-radius: 10px;">
+                    <div style="color: #bbb; font-size: 13px; margin-bottom: 5px;">{lbls[i]}</div>
                     {get_colored_val(vals[i])}
                 </div>""", unsafe_allow_html=True)
