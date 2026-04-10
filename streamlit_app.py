@@ -4,59 +4,61 @@ from scipy.stats import poisson
 import pandas as pd
 
 # Ρύθμιση σελίδας
-st.set_page_config(page_title="Pro Football Predictor", layout="wide")
+st.set_page_config(page_title="Pro Predictor v16.32", layout="wide")
 
-# --- CSS ΓΙΑ ΤΟ ΤΕΛΙΚΟ DESIGN (v16.31) ---
+# --- CSS ΓΙΑ ΤΟ ΤΕΛΙΚΟ DESIGN ---
 st.markdown("""
     <style>
-    /* 1. Background: Moody Empty Stadium */
+    /* 1. Background: Φαίνεται το γήπεδο (λιγότερο σκοτάδι) */
     .stApp {
-        background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), 
-        url("https://images.unsplash.com/photo-1510051646601-988fd274169c?q=80&w=2070&auto=format&fit=crop");
+        background: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), 
+        url("https://images.unsplash.com/photo-1522778119026-d647f0596c20?q=80&w=2070&auto=format&fit=crop");
         background-size: cover;
         background-attachment: fixed;
     }
     
-    /* 2. Sidebar: Λευκό φόντο + Μαύρα γράμματα (Fixed Visibility) */
+    /* 2. Sidebar: Απαλό γκρι (όχι τυφλωτικό λευκό) + ΜΑΥΡΑ γράμματα */
     [data-testid="stSidebar"] {
-        background-color: #ffffff !important;
+        background-color: #f0f2f6 !important;
     }
     [data-testid="stSidebar"] * {
         color: #000000 !important;
         font-weight: 700 !important;
     }
-    /* Επιλογή Πρωταθλήματος Label */
-    [data-testid="stSidebar"] label {
-        color: #000000 !important;
-        font-size: 1.1rem !important;
+
+    /* 3. Μαύρο κουμπί Sidebar (Hamburger menu) */
+    [data-testid="stHeader"] button svg {
+        fill: #000000 !important;
     }
 
-    /* 3. Expanders: Τίτλοι ΑΓΩΝΩΝ - ΚΑΤΑΛΕΥΚΟΙ (Force CSS) */
+    /* 4. Expanders: ΚΑΤΑΛΕΥΚΑ ΓΡΑΜΜΑΤΑ ΜΕ ΜΑΥΡΟ ΠΕΡΙΓΡΑΜΜΑ (Force) */
     .streamlit-expanderHeader {
         background-color: rgba(255, 255, 255, 0.1) !important;
         border: 1px solid rgba(255, 255, 255, 0.2) !important;
     }
-    /* Στόχευση κειμένου μέσα στον τίτλο */
+    
     .streamlit-expanderHeader p {
         color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
+        -webkit-text-fill-color: white !important;
+        -webkit-text-stroke: 0.5px black; /* Για να ξεχωρίζουν οι άκρες */
         font-weight: 900 !important;
         font-size: 1.2rem !important;
-        text-shadow: 2px 2px 4px #000000 !important;
+        text-shadow: 2px 2px 8px #000000 !important;
     }
 
-    /* 4. Απόκρυψη του ενοχλητικού Toolbar πάνω από πίνακες */
+    /* 5. Εξαφάνιση Toolbars */
     [data-testid="stElementToolbar"] {
         display: none !important;
     }
 
-    /* 5. Main Titles */
+    /* 6. Main Title */
     .main-title {
         color: #ffffff !important;
-        font-size: 2.8rem !important;
+        font-size: 2.5rem !important;
         font-weight: 800;
         text-align: center;
-        text-shadow: 3px 3px 6px #000000;
+        text-shadow: 2px 2px 10px #000000;
+        margin-bottom: 20px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -84,11 +86,11 @@ def get_colored_val(val):
     return f'<span style="color: white; font-size: 18px;">{perc}%</span>'
 
 # --- SIDEBAR ---
-st.sidebar.markdown("# ⚙️ Ρυθμίσεις")
+st.sidebar.markdown("### ⚙️ Ρυθμίσεις")
 sel_league_name = st.sidebar.selectbox("Επιλογή Πρωταθλήματος:", list(LEAGUES.values()))
 sel_code = [k for k, v in LEAGUES.items() if v == sel_league_name][0]
 
-st.sidebar.markdown(f"### 🏆 {sel_league_name} Standings")
+st.sidebar.markdown(f"### 🏆 Βαθμολογία {sel_league_name}")
 st_data = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_code}/standings")
 standings_dict = {}
 
@@ -103,7 +105,7 @@ if st_data and 'standings' in st_data:
     st.sidebar.dataframe(pd.DataFrame(df_sidebar), hide_index=True, use_container_width=True)
 
 # --- MAIN ---
-st.markdown(f'<div class="main-title">⚽ {sel_league_name} Analysis</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="main-title">⚽ {sel_league_name} Match Predictor</div>', unsafe_allow_html=True)
 
 all_data = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_code}/matches")
 all_m = all_data.get('matches', [])
@@ -119,7 +121,6 @@ for m in display_m:
     a_stats = standings_dict.get(a_t, {'gf': 1.2, 'ga': 1.2})
     h_l, a_l = (h_stats['gf'] + a_stats['ga'])/2, (a_stats['gf'] + h_stats['ga'])/2
     
-    # Poisson Logic
     p1 = sum([poisson.pmf(i, h_l) * sum([poisson.pmf(j, a_l) for j in range(i)]) for i in range(1, 6)])
     px = sum([poisson.pmf(i, h_l) * poisson.pmf(i, a_l) for i in range(6)])
     p2 = max(0, 1 - p1 - px)
@@ -140,8 +141,7 @@ for m in display_m:
         vals = [p1, px, p2, pgg, po15, po25]
         for i in range(6):
             with cols[i]:
-                st.markdown(f"""<div style="text-align: center; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 10px;">
-                    <div style="color: #bbb; font-size: 14px; margin-bottom: 5px;">{lbls[i]}</div>
+                st.markdown(f"""<div style="text-align: center; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 10px;">
+                    <div style="color: #ccc; font-size: 14px; margin-bottom: 5px;">{lbls[i]}</div>
                     {get_colored_val(vals[i])}
                 </div>""", unsafe_allow_html=True)
-
