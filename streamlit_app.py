@@ -6,10 +6,10 @@ import pandas as pd
 # Ρύθμιση σελίδας
 st.set_page_config(page_title="Pro Football Predictor", layout="wide")
 
-# --- CSS ΓΙΑ ΤΟ ΤΕΛΙΚΟ DESIGN (v16.29) ---
+# --- CSS ΓΙΑ ΤΟ ΤΕΛΙΚΟ DESIGN (Restored) ---
 st.markdown("""
     <style>
-    /* 1. Η Ατμοσφαιρική Φωτογραφία (Nike Style Arena) */
+    /* 1. Η Ατμοσφαιρική Φωτογραφία που ήθελες */
     .stApp {
         background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), 
         url("https://images.unsplash.com/photo-1510051646601-988fd274169c?q=80&w=2070&auto=format&fit=crop");
@@ -17,7 +17,7 @@ st.markdown("""
         background-attachment: fixed;
     }
     
-    /* 2. Sidebar: ΛΕΥΚΟ ΦΟΝΤΟ + ΚΑΤΑΜΑΥΡΑ ΓΡΑΜΜΑΤΑ (Force) */
+    /* 2. Sidebar: Λευκό Φόντο + ΚΑΤΑΜΑΥΡΑ ΓΡΑΜΜΑΤΑ */
     [data-testid="stSidebar"] {
         background-color: #ffffff !important;
     }
@@ -26,29 +26,24 @@ st.markdown("""
         font-weight: 800 !important;
     }
 
-    /* 3. Μαύρο Sidebar Toggle (Force) */
+    /* 3. Μαύρο Sidebar Toggle (Οι τρεις γραμμές πάνω αριστερά) */
     [data-testid="stHeader"] button svg, 
     [data-testid="stSidebarCollapsedControl"] svg {
         fill: #000000 !important;
-        stroke: #000000 !important;
     }
 
-    /* 4. ΤΙΤΛΟΙ ΑΓΩΝΩΝ: PURE WHITE (FORCE) */
-    .streamlit-expanderHeader p {
+    /* 4. ΤΙΤΛΟΙ ΑΓΩΝΩΝ: ΚΑΤΑΛΕΥΚΟΙ (Force CSS) */
+    /* Αυτό το κομμάτι στοχεύει απευθείας στο κείμενο του expander */
+    .streamlit-expanderHeader div[data-testid="stMarkdownContainer"] p {
         color: #ffffff !important;
         font-weight: 900 !important;
-        font-size: 1.2rem !important;
-    }
-    
-    /* Extra Layer για τα Expanders */
-    .st-emotion-cache-p9v961, .st-emotion-cache-1647z6a { 
-        color: #ffffff !important; 
+        font-size: 1.25rem !important;
+        text-shadow: 2px 2px 4px rgba(0,0,0,1) !important;
     }
 
     .streamlit-expanderHeader {
-        background-color: rgba(255, 255, 255, 0.15) !important;
-        border: 1px solid rgba(255, 255, 255, 0.3) !important;
-        border-radius: 8px !important;
+        background-color: rgba(255, 255, 255, 0.1) !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
     }
     
     /* 5. Main Title */
@@ -58,7 +53,6 @@ st.markdown("""
         font-weight: 800;
         text-align: center;
         padding: 20px;
-        text-shadow: 2px 2px 5px #000;
     }
 
     /* 6. Απόκρυψη Toolbar Πίνακα */
@@ -140,6 +134,7 @@ for m in display_m:
     if status in ['IN_PLAY', 'PAUSED']:
         title = f"🔴 LIVE {cur_h}-{cur_a} | {h_t} vs {a_t}"
 
+    # Expanders
     with st.expander(title):
         cols = st.columns(6)
         lbls = ["1", "X", "2", "GG", "O1.5", "O2.5"]
@@ -150,4 +145,5 @@ for m in display_m:
                     <div style="color: #bbb; font-size: 14px; margin-bottom: 5px;">{lbls[i]}</div>
                     {get_colored_val(vals[i])}
                 </div>""", unsafe_allow_html=True)
+
 
