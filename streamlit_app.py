@@ -6,43 +6,49 @@ import pandas as pd
 # Ρύθμιση σελίδας
 st.set_page_config(page_title="Pro Football Predictor", layout="wide")
 
-# --- CSS ΓΙΑ ΤΟ ΤΕΛΙΚΟ DESIGN (v16.26) ---
+# --- CSS ΓΙΑ ΤΟ ΤΕΛΙΚΟ DESIGN (v16.29) ---
 st.markdown("""
     <style>
-    /* 1. Background (Κρατάμε το "Empy Arena" Στάδιο) */
+    /* 1. Η Ατμοσφαιρική Φωτογραφία (Nike Style Arena) */
     .stApp {
         background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), 
-        url("https://images.unsplash.com/photo-1522778119026-d647f0596c20?q=80&w=2070&auto=format&fit=crop");
+        url("https://images.unsplash.com/photo-1510051646601-988fd274169c?q=80&w=2070&auto=format&fit=crop");
         background-size: cover;
         background-attachment: fixed;
     }
     
-    /* 2. Sidebar: Λευκό Φόντο + ΜΑΥΡΑ γράμματα παντού για να διαβάζονται */
+    /* 2. Sidebar: ΛΕΥΚΟ ΦΟΝΤΟ + ΚΑΤΑΜΑΥΡΑ ΓΡΑΜΜΑΤΑ (Force) */
     [data-testid="stSidebar"] {
-        background-color: #f0f2f6 !important;
+        background-color: #ffffff !important;
     }
     [data-testid="stSidebar"] * {
         color: #000000 !important;
-        font-weight: 600 !important;
+        font-weight: 800 !important;
     }
 
-    /* 3. Μαύρο Sidebar Toggle Button */
+    /* 3. Μαύρο Sidebar Toggle (Force) */
     [data-testid="stHeader"] button svg, 
     [data-testid="stSidebarCollapsedControl"] svg {
         fill: #000000 !important;
-        color: #000000 !important;
+        stroke: #000000 !important;
     }
 
-    /* 4. Expanders: Σκούρο φόντο + ΕΚΤΥΦΛΩΤΙΚΑ ΛΕΥΚΟ κείμενο */
-    .streamlit-expanderHeader {
-        background-color: rgba(255, 255, 255, 0.1) !important;
-        border: 1px solid rgba(255, 255, 255, 0.2) !important;
-        border-radius: 10px !important;
-    }
+    /* 4. ΤΙΤΛΟΙ ΑΓΩΝΩΝ: PURE WHITE (FORCE) */
     .streamlit-expanderHeader p {
-        color: #ffffff !important; /*Bright White*/
+        color: #ffffff !important;
         font-weight: 900 !important;
         font-size: 1.2rem !important;
+    }
+    
+    /* Extra Layer για τα Expanders */
+    .st-emotion-cache-p9v961, .st-emotion-cache-1647z6a { 
+        color: #ffffff !important; 
+    }
+
+    .streamlit-expanderHeader {
+        background-color: rgba(255, 255, 255, 0.15) !important;
+        border: 1px solid rgba(255, 255, 255, 0.3) !important;
+        border-radius: 8px !important;
     }
     
     /* 5. Main Title */
@@ -52,9 +58,10 @@ st.markdown("""
         font-weight: 800;
         text-align: center;
         padding: 20px;
+        text-shadow: 2px 2px 5px #000;
     }
 
-    /* 6. Hide Table Toolbar */
+    /* 6. Απόκρυψη Toolbar Πίνακα */
     [data-testid="stElementToolbar"] {
         display: none !important;
     }
@@ -77,7 +84,6 @@ def fetch_data(url):
         return res.json() if res.status_code == 200 else {}
     except: return {}
 
-# Χρώμα για το 70%+ (Neon Green)
 def get_colored_val(val):
     perc = round(val * 100)
     if perc >= 70:
@@ -89,7 +95,7 @@ st.sidebar.title("📌 Ρυθμίσεις")
 sel_league_name = st.sidebar.selectbox("Επιλογή Πρωταθλήματος:", list(LEAGUES.values()))
 sel_code = [k for k, v in LEAGUES.items() if v == sel_league_name][0]
 
-st.sidebar.markdown(f"### 🏆 {sel_league_name} Standings")
+st.sidebar.markdown(f"### 🏆 {sel_league_name}")
 st_data = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_code}/standings")
 standings_dict = {}
 
@@ -104,7 +110,7 @@ if st_data and 'standings' in st_data:
     st.sidebar.dataframe(pd.DataFrame(df_sidebar), hide_index=True, use_container_width=True)
 
 # --- MAIN ---
-st.markdown(f'<div class="main-title">⚽ {sel_league_name} Analysis</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="main-title">⚽ {sel_league_name} Predictor</div>', unsafe_allow_html=True)
 
 all_data = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_code}/matches")
 all_m = all_data.get('matches', [])
@@ -116,12 +122,10 @@ for m in display_m:
     score = m.get('score', {}).get('fullTime', {})
     cur_h, cur_a = (score.get('home') or 0), (score.get('away') or 0)
     
-    # Simple Stats Logic
     h_stats = standings_dict.get(h_t, {'gf': 1.2, 'ga': 1.2})
     a_stats = standings_dict.get(a_t, {'gf': 1.2, 'ga': 1.2})
     h_l, a_l = (h_stats['gf'] + a_stats['ga'])/2, (a_stats['gf'] + h_stats['ga'])/2
     
-    # Poisson
     p1 = sum([poisson.pmf(i, h_l) * sum([poisson.pmf(j, a_l) for j in range(i)]) for i in range(1, 6)])
     px = sum([poisson.pmf(i, h_l) * poisson.pmf(i, a_l) for i in range(6)])
     p2 = max(0, 1 - p1 - px)
@@ -143,6 +147,7 @@ for m in display_m:
         for i in range(6):
             with cols[i]:
                 st.markdown(f"""<div style="text-align: center; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 10px;">
-                    <div style="color: #ccc; font-size: 14px; margin-bottom: 5px;">{lbls[i]}</div>
+                    <div style="color: #bbb; font-size: 14px; margin-bottom: 5px;">{lbls[i]}</div>
                     {get_colored_val(vals[i])}
                 </div>""", unsafe_allow_html=True)
+
