@@ -145,3 +145,6 @@ for i, m in enumerate(display_m):
                     <span style="color: {color}; font-size: 20px; font-weight: bold;">{val}</span>
                 </div>
             """, unsafe_allow_html=True)
+  
+        
+        
