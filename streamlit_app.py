@@ -131,3 +131,4 @@ for m in display_m:
             if i == 4 and total_cur >= 2: cols[i].write("✅ O1.5")
             elif i == 5 and total_cur >= 3: cols[i].write("✅ O2.5")
             else: cols[i].metric(lbls[i], f"{round(vals[i]*100)}%")
+
