@@ -6,7 +6,7 @@ import pandas as pd
 # Ρύθμιση σελίδας
 st.set_page_config(page_title="Pro Predictor v16.37", layout="wide")
 
-# --- CSS (Διατήρηση δομής) ---
+# --- CSS ---
 st.markdown("""
     <style>
     .stApp {
@@ -18,21 +18,24 @@ st.markdown("""
     div[data-baseweb="select"] * { color: #000000 !important; }
     .sidebar-white-text { color: #ffffff !important; font-weight: bold; }
     h1, h2, h3, [data-testid="stMarkdownContainer"] p { color: #ffffff !important; }
+    
     .matchday-divider {
         border: 0; height: 3px;
         background: linear-gradient(to right, transparent, #00ff88, #ffffff, #00ff88, transparent);
         margin: 40px 0 20px 0;
     }
+    
+    /* Διορθωμένα κουτάκια: Πιο μαζεμένα */
     .prediction-box {
         background: rgba(255, 255, 255, 0.08) !important; 
-        padding: 12px; border-radius: 10px; text-align: center;
-        border: 1px solid rgba(255, 255, 255, 0.15); backdrop-filter: blur(3px);
+        padding: 8px 5px; 
+        border-radius: 8px; 
+        text-align: center;
+        border: 1px solid rgba(255, 255, 255, 0.15); 
+        backdrop-filter: blur(3px);
+        margin-bottom: 5px;
     }
-    .live-badge {
-        background-color: #ff0000; color: white; padding: 2px 8px;
-        border-radius: 5px; font-weight: bold; animation: blinker 1.5s linear infinite;
-    }
-    @keyframes blinker { 50% { opacity: 0; } }
+
     [data-testid="stElementToolbar"] { display: none !important; }
     </style>
     """, unsafe_allow_html=True)
@@ -91,41 +94,37 @@ for i, m in enumerate(display_m):
     h_stats = standings_dict.get(h_t, {'gf':1.2, 'ga':1.2})
     a_stats = standings_dict.get(a_t, {'gf':1.2, 'ga':1.2})
     
-    # Υπολογισμός εναπομείναντος χρόνου (απλοποιημένα)
-    time_factor = 1.0
-    if is_live:
-        # Αν το API δεν δίνει λεπτό, υποθέτουμε μέση τιμή ή το αφήνουμε 0.5 για το live
-        time_factor = 0.4 # Υποθέτουμε ότι έχει παιχτεί το μισό αν είναι live
-    
+    time_factor = 0.5 if is_live else 1.0
     h_l = ((h_stats['gf'] + a_stats['ga'])/2) * time_factor
     a_l = ((a_stats['gf'] + h_stats['ga'])/2) * time_factor
     
-    # Προσαρμογή Poisson με το τρέχον σκορ
-    # Πιθανότητα 1: Ο εντός έδρας να βάλει περισσότερα + το τρέχον προβάδισμα
+    # Poisson Math
     p1 = sum([poisson.pmf(k, h_l) * sum([poisson.pmf(j, a_l) for j in range(k + (h_score - a_score))]) for k in range(0, 6)])
     px = sum([poisson.pmf(k, h_l) * poisson.pmf(k + (h_score - a_score), a_l) for k in range(0, 6)])
     p2 = max(0, 1 - p1 - px)
     
-    # Over 1.5 / 2.5 (συμπεριλαμβάνοντας τα ήδη σημειωθέντα γκολ)
     current_total = h_score + a_score
     po15 = 1 - sum([poisson.pmf(k, h_l + a_l) for k in range(max(0, 2 - current_total))])
     po25 = 1 - sum([poisson.pmf(k, h_l + a_l) for k in range(max(0, 3 - current_total))])
     pgg = (1-poisson.pmf(0, h_l + (1 if h_score > 0 else 0))) * (1-poisson.pmf(0, a_l + (1 if a_score > 0 else 0)))
 
-    # Τίτλος με Live Score
-    live_label = f'<span class="live-badge">LIVE {h_score}-{a_score}</span> ' if is_live else ""
-    title = f"{live_label} 📅 {m['utcDate'][11:16]} | {m['homeTeam']['shortName']} vs {m['awayTeam']['shortName']}"
+    # ΔΙΟΡΘΩΣΗ: Καθαρός τίτλος χωρίς HTML tags και επαναφορά ημερομηνίας
+    live_str = f"LIVE {h_score}-{a_score} | " if is_live else ""
+    title = f"{live_str}📅 {m['utcDate'][:10]} | {m['homeTeam']['shortName']} vs {m['awayTeam']['shortName']}"
     
     with st.expander(title):
-        c1, c2, c3, c4, c5, c6 = st.columns(6)
+        # ΔΙΟΡΘΩΣΗ: Οι στήλες ορίζονται μία φορά για να μην αραιώνουν
+        cols = st.columns(6)
         res_list = [("1", p1), ("X", px), ("2", p2), ("GG", pgg), ("O1.5", po15), ("O2.5", po25)]
         
         for idx, (lbl, val) in enumerate(res_list):
             val_perc = min(100, max(0, round(val * 100)))
             color = "#00ff88" if val_perc > 65 else "#ffffff"
-            st.columns(6)[idx].markdown(f"""
+            
+            cols[idx].markdown(f"""
                 <div class="prediction-box">
-                    <small style="color: #bbb;">{lbl}</small><br>
-                    <span style="color: {color}; font-size: 18px; font-weight: bold;">{val_perc}%</span>
+                    <small style="color: #bbb; font-size: 12px;">{lbl}</small><br>
+                    <span style="color: {color}; font-size: 16px; font-weight: bold;">{val_perc}%</span>
                 </div>
             """, unsafe_allow_html=True)
+
