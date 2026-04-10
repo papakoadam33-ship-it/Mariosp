@@ -4,12 +4,12 @@ from scipy.stats import poisson
 import pandas as pd
 
 # Ρύθμιση σελίδας
-st.set_page_config(page_title="Pro Football Predictor", layout="wide")
+st.set_page_config(page_title="Pro Predictor v16.27 Optimized", layout="wide")
 
-# --- CSS ΓΙΑ ΤΟ ΤΕΛΙΚΟ DESIGN ---
+# --- CSS ΓΙΑ ΤΟ DESIGN (v16.27 Base + New Fixes) ---
 st.markdown("""
     <style>
-    /* 1. Φόντο: ΠΡΑΓΜΑΤΙΚΑ ΑΔΕΙΟ ΣΤΑΔΙΟ */
+    /* 1. Φόντο από v16.27 */
     .stApp {
         background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), 
         url("https://images.unsplash.com/photo-1504450758481-7338eba7524a?q=80&w=2069&auto=format&fit=crop");
@@ -17,46 +17,41 @@ st.markdown("""
         background-attachment: fixed;
     }
     
-    /* 2. Sidebar: Μαύρα γράμματα παντού */
+    /* 2. Sidebar: ΑΠΑΛΟ ΓΚΡΙ φόντο + Μαύρα γράμματα */
     [data-testid="stSidebar"] {
-        background-color: #ffffff !important;
+        background-color: #f0f2f6 !important;
     }
     [data-testid="stSidebar"] * {
         color: #000000 !important;
         font-weight: bold !important;
     }
 
-    /* 3. Μαύρο Sidebar Toggle Button */
-    [data-testid="stHeader"] button svg, 
-    [data-testid="stSidebarCollapsedControl"] svg {
-        fill: #000000 !important;
-        color: #000000 !important;
+    /* 3. Τίτλοι Αγώνων: ΚΑΘΑΡΟ ΛΕΥΚΟ (Force) */
+    .streamlit-expanderHeader p {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        font-weight: 900 !important;
+        font-size: 1.25rem !important;
+        text-shadow: 2px 2px 4px #000000 !important;
     }
-
-    /* 4. ΕΚΤΥΦΛΩΤΙΚΑ ΛΕΥΚΑ ΓΡΑΜΜΑΤΑ ΣΤΟΥΣ ΤΙΤΛΟΥΣ (Expanders) */
+    
     .streamlit-expanderHeader {
         background-color: rgba(255, 255, 255, 0.1) !important;
         border: 1px solid rgba(255, 255, 255, 0.2) !important;
     }
-    .streamlit-expanderHeader p {
-        color: white !important;
-        font-weight: 900 !important;
-        font-size: 1.3rem !important;
-        -webkit-text-fill-color: white !important; /* Force for mobile/chrome */
+
+    /* 4. Hide Toolbars */
+    [data-testid="stElementToolbar"] {
+        display: none !important;
     }
-    
+
     /* 5. Main Title */
     .main-title {
         color: white !important;
-        font-size: 2.8rem !important;
+        font-size: 2.5rem !important;
         font-weight: 800;
         text-align: center;
         padding: 20px;
-    }
-
-    /* 6. Hide Table Toolbar */
-    [data-testid="stElementToolbar"] {
-        display: none !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -88,6 +83,7 @@ st.sidebar.title("📌 Ρυθμίσεις")
 sel_league_name = st.sidebar.selectbox("Επιλογή Πρωταθλήματος:", list(LEAGUES.values()))
 sel_code = [k for k, v in LEAGUES.items() if v == sel_league_name][0]
 
+st.sidebar.markdown(f"### 🏆 {sel_league_name}")
 st_data = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_code}/standings")
 standings_dict = {}
 
@@ -98,7 +94,7 @@ if st_data and 'standings' in st_data:
             'gf': t['goalsFor'] / t['playedGames'] if t['playedGames'] > 0 else 1.2,
             'ga': t['goalsAgainst'] / t['playedGames'] if t['playedGames'] > 0 else 1.2
         }
-    df_sidebar = [{"Pos": t['position'], "Team": t['team']['shortName'], "Pts": t['points']} for t in st_table]
+    df_sidebar = [{"#": t['position'], "Team": t['team']['shortName'], "Pts": t['points']} for t in st_table]
     st.sidebar.dataframe(pd.DataFrame(df_sidebar), hide_index=True, use_container_width=True)
 
 # --- MAIN ---
@@ -128,21 +124,21 @@ for m in display_m:
     date_str = m['utcDate'][:10]
     time_str = m['utcDate'][11:16]
     
-    # Τίτλος (Εδώ αναγκάζουμε το λευκό χρώμα)
-    title_text = f"🗓️ {date_str} {time_str} | {h_t} vs {a_t}"
+    title = f"🗓️ {date_str} {time_str} | {h_t} vs {a_t}"
     if status in ['IN_PLAY', 'PAUSED']:
-        title_text = f"🔴 LIVE {cur_h}-{cur_a} | {h_t} vs {a_t}"
+        title = f"🔴 LIVE {cur_h}-{cur_a} | {h_t} vs {a_t}"
 
-    with st.expander(title_text):
+    with st.expander(title):
         cols = st.columns(6)
         lbls = ["1", "X", "2", "GG", "O1.5", "O2.5"]
         vals = [p1, px, p2, pgg, po15, po25]
         for i in range(6):
             with cols[i]:
                 st.markdown(f"""<div style="text-align: center; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 10px;">
-                    <div style="color: #ccc; font-size: 14px; margin-bottom: 5px;">{lbls[i]}</div>
+                    <div style="color: #bbb; font-size: 14px; margin-bottom: 5px;">{lbls[i]}</div>
                     {get_colored_val(vals[i])}
                 </div>""", unsafe_allow_html=True)
+
 
 
 
