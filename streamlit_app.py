@@ -145,3 +145,4 @@ for m in display_m:
                     <div style="color: #ccc; font-size: 14px; margin-bottom: 5px;">{lbls[i]}</div>
                     {get_colored_val(vals[i])}
                 </div>""", unsafe_allow_html=True)
+
