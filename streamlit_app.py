@@ -6,7 +6,7 @@ import pandas as pd
 # Ρύθμιση σελίδας
 st.set_page_config(page_title="Pro Predictor v16.37", layout="wide")
 
-# --- CSS (Αμετάβλητο) ---
+# --- CSS ---
 st.markdown("""
     <style>
     .stApp {
@@ -85,7 +85,7 @@ matches = all_data.get('matches', [])
 display_m = [m for m in matches if m['status'] in ['SCHEDULED', 'TIMED', 'IN_PLAY', 'PAUSED']][:30]
 
 for i, m in enumerate(display_m):
-    if i > 0 and i % (len(standings_dict) // 2) == 0:
+    if i > 0 and len(standings_dict) > 0 and i % (len(standings_dict) // 2) == 0:
         st.markdown('<div class="matchday-divider"></div>', unsafe_allow_html=True)
 
     status = m['status']
@@ -102,22 +102,22 @@ for i, m in enumerate(display_m):
     h_l = ((h_stats['gf'] + a_stats['ga'])/2) * time_factor * h_fmod
     a_l = ((a_stats['gf'] + h_stats['ga'])/2) * time_factor * a_fmod
     
+    # Probabilities
     p1 = sum([poisson.pmf(k, h_l) * sum([poisson.pmf(j, a_l) for j in range(k + (h_score - a_score))]) for k in range(0, 6)])
     px = sum([poisson.pmf(k, h_l) * poisson.pmf(k + (h_score - a_score), a_l) for k in range(0, 6)])
     p2 = max(0, 1 - p1 - px)
     current_total = h_score + a_score
     po25_val = 1 - sum([poisson.pmf(k, h_l + a_l) for k in range(max(0, 3 - current_total))])
-    po15_val = 1 - sum([poisson.pmf(k, h_l + a_l) for range(max(0, 2 - current_total))]) if 'range' in locals() else 0 # Fix for syntax
     po15_val = 1 - sum([poisson.pmf(k, h_l + a_l) for k in range(max(0, 2 - current_total))])
     pgg_val = (1-poisson.pmf(0, h_l + (1 if h_score > 0 else 0))) * (1-poisson.pmf(0, a_l + (1 if a_score > 0 else 0)))
 
-    # --- NEW VALUE LOGIC ---
+    # Value Logic
     alert_emoji, alert_msg = "", ""
     if p1 > 0.75: 
         alert_emoji, alert_msg = "💎", "High Confidence: Home Win"
-    elif p1 + px > 0.60 and h_stats['pos'] > a_stats['pos'] + 5:
+    elif (p1 + px) > 0.60 and h_stats['pos'] > (a_stats['pos'] + 4):
         alert_emoji, alert_msg = "🔥", f"Value Opportunity: 1X Underdog ({round((p1+px)*100)}%)"
-    elif p2 + px > 0.60 and a_stats['pos'] > h_stats['pos'] + 5:
+    elif (p2 + px) > 0.60 and a_stats['pos'] > (h_stats['pos'] + 4):
         alert_emoji, alert_msg = "🔥", f"Value Opportunity: X2 Underdog ({round((p2+px)*100)}%)"
     elif p2 > 0.65:
         alert_emoji, alert_msg = "🔥", "Value Opportunity: Away Win"
@@ -139,7 +139,6 @@ for i, m in enumerate(display_m):
             color = "#00ff88" if (happened or val_perc > 65) else "#ffffff"
             cols1[idx].markdown(f'<div class="prediction-box"><small style="color:#bbb; font-size:11px;">{lbl}</small><br><span style="color:{color}; font-size:15px; font-weight:bold;">{display_text}</span></div>', unsafe_allow_html=True)
         
-        # HT & Scores row
         st.markdown('<p style="font-size:12px; color:#aaa; margin-top:10px;">HT & Probable Scores</p>', unsafe_allow_html=True)
         cols2 = st.columns(6)
         p1_ht = sum([poisson.pmf(k, h_l*0.45) * sum([poisson.pmf(j, a_l*0.45) for j in range(k)]) for k in range(1, 5)])
@@ -148,6 +147,7 @@ for i, m in enumerate(display_m):
         for idx, (l, v) in enumerate([("HT 1", p1_ht), ("HT X", px_ht), ("HT 2", p2_ht)]):
             cols2[idx].markdown(f'<div class="prediction-box"><small style="color:#bbb; font-size:10px;">{l}</small><br><span style="color:#fff; font-size:14px;">{round(v*100)}%</span></div>', unsafe_allow_html=True)
         
+        # Correct Scores
         scores = sorted([(f"{h+h_score}-{a+a_score}", poisson.pmf(h,h_l)*poisson.pmf(a,a_l)) for h in range(4) for a in range(4)], key=lambda x:x[1], reverse=True)[:3]
         for i in range(3):
             s_lbl, s_prob = scores[i]
