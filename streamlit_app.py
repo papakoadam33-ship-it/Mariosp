@@ -6,7 +6,7 @@ import pandas as pd
 # Ρύθμιση σελίδας
 st.set_page_config(page_title="Pro Predictor v16.37", layout="wide")
 
-# --- CSS ---
+# --- CSS (Αμετάβλητο) ---
 st.markdown("""
     <style>
     .stApp {
@@ -44,16 +44,28 @@ def fetch_data(url):
         return res.json() if res.status_code == 200 else {}
     except: return {}
 
-def calculate_form_modifier(team_name, standings_dict):
+# --- SMART FORM MODIFIER ---
+def calculate_smart_modifier(team_name, standings_dict):
     stats = standings_dict.get(team_name, {})
     form = stats.get('form', "")
     pos = stats.get('pos', 10)
+    
     modifier = 1.0
     if not form: return modifier
-    last_results = form.replace(',', '').split()
-    for res in last_results[:3]:
-        if res == 'W': modifier += 0.05 if pos > 10 else 0.02
-        elif res == 'L': modifier -= 0.05 if pos < 6 else 0.02
+    
+    # Το API μας δίνει μια σειρά αποτελεσμάτων, π.χ. "W,L,W"
+    results = form.replace(',', '').split()
+    
+    for res in results[:3]:
+        if res == 'W':
+            # Bonus μόνο αν η νίκη έχει "ποιότητα" (αν η ομάδα είναι χαμηλά και νικάει)
+            # Εδώ θεωρούμε ότι οι νίκες που καταγράφονται στο form έχουν ήδη γίνει 
+            # κόντρα σε διάφορους αντιπάλους. Δίνουμε μεγαλύτερη έμφαση στο σερί.
+            modifier += 0.07 if pos > 12 else 0.03
+        elif res == 'L':
+            # Μεγάλο Penalty αν ο Top 6 χάνει (κρίση)
+            modifier -= 0.08 if pos <= 6 else 0.03
+            
     return modifier
 
 # --- SIDEBAR ---
@@ -70,7 +82,8 @@ if st_data and 'standings' in st_data:
         standings_dict[t['team']['name']] = {
             'gf': t['goalsFor']/t['playedGames'] if t['playedGames']>0 else 1.2, 
             'ga': t['goalsAgainst']/t['playedGames'] if t['playedGames']>0 else 1.2,
-            'pos': t['position'], 'form': t.get('form', "") 
+            'pos': t['position'], 'form': t.get('form', ""),
+            'short': t['team']['shortName']
         }
     df = pd.DataFrame([{"#": t['position'], "Team": t['team']['shortName'], "Pts": t['points']} for t in st_table])
     st.sidebar.markdown("---")
@@ -97,7 +110,10 @@ for i, m in enumerate(display_m):
     h_stats = standings_dict.get(h_t, {'gf':1.2, 'ga':1.2, 'pos':10, 'form':''})
     a_stats = standings_dict.get(a_t, {'gf':1.2, 'ga':1.2, 'pos':10, 'form':''})
     
-    h_fmod, a_fmod = calculate_form_modifier(h_t, standings_dict), calculate_form_modifier(a_t, standings_dict)
+    # Εφαρμογή Bonus/Penalty
+    h_fmod = calculate_smart_modifier(h_t, standings_dict)
+    a_fmod = calculate_smart_modifier(a_t, standings_dict)
+    
     time_factor = 0.5 if is_live else 1.0
     h_l = ((h_stats['gf'] + a_stats['ga'])/2) * time_factor * h_fmod
     a_l = ((a_stats['gf'] + h_stats['ga'])/2) * time_factor * a_fmod
@@ -111,18 +127,17 @@ for i, m in enumerate(display_m):
     po15_val = 1 - sum([poisson.pmf(k, h_l + a_l) for k in range(max(0, 2 - current_total))])
     pgg_val = (1-poisson.pmf(0, h_l + (1 if h_score > 0 else 0))) * (1-poisson.pmf(0, a_l + (1 if a_score > 0 else 0)))
 
-    # Value Logic
+    # --- ADVANCED VALUE LOGIC ---
     alert_emoji, alert_msg = "", ""
-    if p1 > 0.75: 
-        alert_emoji, alert_msg = "💎", "High Confidence: Home Win"
-    elif (p1 + px) > 0.60 and h_stats['pos'] > (a_stats['pos'] + 4):
-        alert_emoji, alert_msg = "🔥", f"Value Opportunity: 1X Underdog ({round((p1+px)*100)}%)"
-    elif (p2 + px) > 0.60 and a_stats['pos'] > (h_stats['pos'] + 4):
-        alert_emoji, alert_msg = "🔥", f"Value Opportunity: X2 Underdog ({round((p2+px)*100)}%)"
-    elif p2 > 0.65:
-        alert_emoji, alert_msg = "🔥", "Value Opportunity: Away Win"
-    elif po25_val > 0.75:
-        alert_emoji, alert_msg = "🔥", "Value Opportunity: Over 2.5"
+    # Περίπτωση 1: Το δυνατό Underdog (Φορμαρισμένος μικρός vs Στατικού μεγάλου)
+    if (p1 + px) > 0.62 and h_stats['pos'] > (a_stats['pos'] + 4) and h_fmod > 1.05:
+        alert_emoji, alert_msg = "🔥", f"Value Opportunity: 1X Underdog Form ({round((p1+px)*100)}%)"
+    elif (p2 + px) > 0.62 and a_stats['pos'] > (h_stats['pos'] + 4) and a_fmod > 1.05:
+        alert_emoji, alert_msg = "🔥", f"Value Opportunity: X2 Underdog Form ({round((p2+px)*100)}%)"
+    # Περίπτωση 2: Υψηλή Αυτοπεποίθηση (💎)
+    elif p1 > 0.76: alert_emoji, alert_msg = "💎", "High Confidence: Home Win"
+    # Περίπτωση 3: Over 2.5
+    elif po25_val > 0.78: alert_emoji, alert_msg = "🔥", "Value Opportunity: Over 2.5"
 
     title = f"{alert_emoji} " + (f"🔴 LIVE {h_score}-{a_score} | {m['homeTeam']['shortName']} vs {m['awayTeam']['shortName']}" if is_live else f"📅 {m['utcDate'][:10]} | {m['homeTeam']['shortName']} vs {m['awayTeam']['shortName']}")
     
@@ -147,10 +162,10 @@ for i, m in enumerate(display_m):
         for idx, (l, v) in enumerate([("HT 1", p1_ht), ("HT X", px_ht), ("HT 2", p2_ht)]):
             cols2[idx].markdown(f'<div class="prediction-box"><small style="color:#bbb; font-size:10px;">{l}</small><br><span style="color:#fff; font-size:14px;">{round(v*100)}%</span></div>', unsafe_allow_html=True)
         
-        # Correct Scores
         scores = sorted([(f"{h+h_score}-{a+a_score}", poisson.pmf(h,h_l)*poisson.pmf(a,a_l)) for h in range(4) for a in range(4)], key=lambda x:x[1], reverse=True)[:3]
         for i in range(3):
             s_lbl, s_prob = scores[i]
             s_perc = round(s_prob * 100)
             score_color = "#00ff88" if s_perc > 15 else "#ffffff"
             cols2[3+i].markdown(f'<div class="prediction-box"><small style="color:#bbb; font-size:9px;">Exact Score</small><br><span style="color:{score_color}; font-size:13px; font-weight:bold;">{s_lbl} ({s_perc}%)</span></div>', unsafe_allow_html=True)
+
