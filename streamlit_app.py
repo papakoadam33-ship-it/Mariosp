@@ -6,7 +6,7 @@ import pandas as pd
 # Ρύθμιση σελίδας
 st.set_page_config(page_title="Pro Predictor v16.37", layout="wide")
 
-# --- CSS (Αμετάβλητο) ---
+# --- CSS ---
 st.markdown("""
     <style>
     .stApp {
@@ -64,11 +64,8 @@ sel_code = [k for k, v in LEAGUES.items() if v == sel_league_name][0]
 
 st_data = fetch_data(f"https://api.football-data.org/v4/competitions/{sel_code}/standings")
 standings_dict = {}
-num_teams = 20 
-
 if st_data and 'standings' in st_data:
     st_table = st_data['standings'][0]['table']
-    num_teams = len(st_table)
     for t in st_table:
         standings_dict[t['team']['name']] = {
             'gf': t['goalsFor']/t['playedGames'] if t['playedGames']>0 else 1.2, 
@@ -88,7 +85,7 @@ matches = all_data.get('matches', [])
 display_m = [m for m in matches if m['status'] in ['SCHEDULED', 'TIMED', 'IN_PLAY', 'PAUSED']][:30]
 
 for i, m in enumerate(display_m):
-    if i > 0 and i % (num_teams // 2) == 0:
+    if i > 0 and i % (len(standings_dict) // 2) == 0:
         st.markdown('<div class="matchday-divider"></div>', unsafe_allow_html=True)
 
     status = m['status']
@@ -100,60 +97,58 @@ for i, m in enumerate(display_m):
     h_stats = standings_dict.get(h_t, {'gf':1.2, 'ga':1.2, 'pos':10, 'form':''})
     a_stats = standings_dict.get(a_t, {'gf':1.2, 'ga':1.2, 'pos':10, 'form':''})
     
-    h_form_mod = calculate_form_modifier(h_t, standings_dict)
-    a_form_mod = calculate_form_modifier(a_t, standings_dict)
-    
+    h_fmod, a_fmod = calculate_form_modifier(h_t, standings_dict), calculate_form_modifier(a_t, standings_dict)
     time_factor = 0.5 if is_live else 1.0
-    h_l = ((h_stats['gf'] + a_stats['ga'])/2) * time_factor * h_form_mod
-    a_l = ((a_stats['gf'] + h_stats['ga'])/2) * time_factor * a_form_mod
+    h_l = ((h_stats['gf'] + a_stats['ga'])/2) * time_factor * h_fmod
+    a_l = ((a_stats['gf'] + h_stats['ga'])/2) * time_factor * a_fmod
     
-    # Τελικό Αποτέλεσμα
+    # Πιθανότητες
     p1 = sum([poisson.pmf(k, h_l) * sum([poisson.pmf(j, a_l) for j in range(k + (h_score - a_score))]) for k in range(0, 6)])
     px = sum([poisson.pmf(k, h_l) * poisson.pmf(k + (h_score - a_score), a_l) for k in range(0, 6)])
     p2 = max(0, 1 - p1 - px)
-
-    # Ημίχρονο (45% των γκολ)
-    h_l_ht, a_l_ht = h_l * 0.45, a_l * 0.45
-    p1_ht = sum([poisson.pmf(k, h_l_ht) * sum([poisson.pmf(j, a_l_ht) for j in range(k)]) for k in range(1, 5)])
-    px_ht = sum([poisson.pmf(k, h_l_ht) * poisson.pmf(k, a_l_ht) for k in range(5)])
-    p2_ht = max(0, 1 - p1_ht - px_ht)
-
-    # Ακριβή Σκορ (Matrix 0-3 γκολ)
-    scores = []
-    for h in range(4):
-        for a in range(4):
-            prob = poisson.pmf(h, h_l) * poisson.pmf(a, a_l)
-            scores.append((f"{h + h_score}-{a + a_score}", prob))
-    top_scores = sorted(scores, key=lambda x: x[1], reverse=True)[:3]
-
     current_total = h_score + a_score
-    po15_val = 1 - sum([poisson.pmf(k, h_l + a_l) for k in range(max(0, 2 - current_total))])
     po25_val = 1 - sum([poisson.pmf(k, h_l + a_l) for k in range(max(0, 3 - current_total))])
+    po15_val = 1 - sum([poisson.pmf(k, h_l + a_l) for k in range(max(0, 2 - current_total))])
     pgg_val = (1-poisson.pmf(0, h_l + (1 if h_score > 0 else 0))) * (1-poisson.pmf(0, a_l + (1 if a_score > 0 else 0)))
-    is_gg, is_o15, is_o25 = h_score > 0 and a_score > 0, current_total > 1, current_total > 2
 
-    title = f"🔴 LIVE {h_score}-{a_score} | {m['homeTeam']['shortName']} vs {m['awayTeam']['shortName']}" if is_live else f"📅 {m['utcDate'][:10]} | {m['homeTeam']['shortName']} vs {m['awayTeam']['shortName']}"
+    # Ημίχρονο & Σκορ
+    p1_ht = sum([poisson.pmf(k, h_l*0.45) * sum([poisson.pmf(j, a_l*0.45) for j in range(k)]) for k in range(1, 5)])
+    px_ht = sum([poisson.pmf(k, h_l*0.45) * poisson.pmf(k, a_l*0.45) for k in range(5)])
+    p2_ht = max(0, 1 - p1_ht - px_ht)
+    scores = sorted([(f"{h+h_score}-{a+a_score}", poisson.pmf(h,h_l)*poisson.pmf(a,a_l)) for h in range(4) for a in range(4)], key=lambda x:x[1], reverse=True)[:3]
+
+    # --- VALUE LOGIC ---
+    alert_emoji, alert_msg = "", ""
+    if p1 > 0.75: alert_emoji, alert_msg = "💎", "High Confidence: Home Win"
+    elif p2 > 0.65: alert_emoji, alert_msg = "🔥", "Value Opportunity: Away Win"
+    elif po25_val > 0.70: alert_emoji, alert_msg = "🔥", "Value Opportunity: Over 2.5"
+    elif (px + p2) > 0.60 and a_stats['pos'] > h_stats['pos']: alert_emoji, alert_msg = "🔥", "Value Opportunity: X2 (Underdog Form)"
+    is_high_risk = (max(p1, px, p2) < 0.40)
+
+    title = f"{alert_emoji} " + (f"🔴 LIVE {h_score}-{a_score} | {m['homeTeam']['shortName']} vs {m['awayTeam']['shortName']}" if is_live else f"📅 {m['utcDate'][:10]} | {m['homeTeam']['shortName']} vs {m['awayTeam']['shortName']}")
     
     with st.expander(title):
-        # 1η Σειρά: Βασικά Σημεία
+        if alert_msg:
+            st.markdown(f'<p style="color:#00ff88; font-weight:bold; font-size:14px;">🌟 {alert_msg}</p>', unsafe_allow_html=True)
+        
         cols1 = st.columns(6)
-        res_list = [("1", p1, False), ("X", px, False), ("2", p2, False), ("GG", pgg_val, is_gg), ("O1.5", po15_val, is_o15), ("O2.5", po25_val, is_o25)]
-        for idx, (lbl, val, happened) in enumerate(res_list):
-            val_perc = min(100, max(0, round(val * 100)))
-            display_text = "✅" if happened else f"{val_perc}%"
+        res_list = [("1", p1), ("X", px), ("2", p2), ("GG", pgg_val), ("O1.5", po15_val), ("O2.5", po25_val)]
+        for idx, (lbl, val) in enumerate(res_list):
+            happened = (lbl=="GG" and h_score>0 and a_score>0) or (lbl=="O1.5" and current_total>1) or (lbl=="O2.5" and current_total>2)
+            val_perc = round(val * 100)
+            risk_icon = "🎲" if (is_high_risk and not happened) else ""
+            display_text = "✅" if happened else f"{val_perc}% {risk_icon}"
             color = "#00ff88" if (happened or val_perc > 65) else "#ffffff"
             cols1[idx].markdown(f'<div class="prediction-box"><small style="color:#bbb; font-size:11px;">{lbl}</small><br><span style="color:{color}; font-size:15px; font-weight:bold;">{display_text}</span></div>', unsafe_allow_html=True)
         
-        # 2η Σειρά: Ημίχρονο & Top Σκορ
-        st.markdown('<p style="font-size:12px; color:#aaa; margin-top:10px; margin-bottom:5px;">HT & Probable Scores</p>', unsafe_allow_html=True)
+        st.markdown('<p style="font-size:12px; color:#aaa; margin-top:10px;">HT & Probable Scores</p>', unsafe_allow_html=True)
         cols2 = st.columns(6)
-        # Ημίχρονο
-        cols2[0].markdown(f'<div class="prediction-box"><small style="color:#bbb; font-size:10px;">HT 1</small><br><span style="color:#fff; font-size:14px;">{round(p1_ht*100)}%</span></div>', unsafe_allow_html=True)
-        cols2[1].markdown(f'<div class="prediction-box"><small style="color:#bbb; font-size:10px;">HT X</small><br><span style="color:#fff; font-size:14px;">{round(px_ht*100)}%</span></div>', unsafe_allow_html=True)
-        cols2[2].markdown(f'<div class="prediction-box"><small style="color:#bbb; font-size:10px;">HT 2</small><br><span style="color:#fff; font-size:14px;">{round(p2_ht*100)}%</span></div>', unsafe_allow_html=True)
-        # Σκορ
+        # HT
+        for idx, (l, v) in enumerate([("HT 1", p1_ht), ("HT X", px_ht), ("HT 2", p2_ht)]):
+            cols2[idx].markdown(f'<div class="prediction-box"><small style="color:#bbb; font-size:10px;">{l}</small><br><span style="color:#fff; font-size:14px;">{round(v*100)}%</span></div>', unsafe_allow_html=True)
+        # Exact Scores
         for i in range(3):
-            s_lbl, s_prob = top_scores[i]
-            cols2[3+i].markdown(f'<div class="prediction-box"><small style="color:#bbb; font-size:10px;">Score</small><br><span style="color:#00ff88; font-size:14px; font-weight:bold;">{s_lbl}</span></div>', unsafe_allow_html=True)
-
-
+            s_lbl, s_prob = scores[i]
+            s_perc = round(s_prob * 100)
+            score_color = "#00ff88" if s_perc > 15 else "#ffffff"
+            cols2[3+i].markdown(f'<div class="prediction-box"><small style="color:#bbb; font-size:9px;">Exact Score</small><br><span style="color:{score_color}; font-size:13px; font-weight:bold;">{s_lbl} ({s_perc}%)</span></div>', unsafe_allow_html=True)
