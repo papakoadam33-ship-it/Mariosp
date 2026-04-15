@@ -44,23 +44,16 @@ def fetch_data(url):
         return res.json() if res.status_code == 200 else {}
     except: return {}
 
-# --- SMART BONUS LOGIC ---
 def calculate_form_modifier(team_name, standings_dict):
     stats = standings_dict.get(team_name, {})
-    form = stats.get('form', "") # π.χ. "W,D,L,W,W"
+    form = stats.get('form', "")
     pos = stats.get('pos', 10)
-    
     modifier = 1.0
     if not form: return modifier
-
-    last_results = form.replace(',', '').split() # Παίρνουμε τα τελευταία γράμματα
-    for res in last_results[:3]: # Κοιτάμε τα τελευταία 3 ματς
-        if res == 'W':
-            # Αν είναι χαμηλά και νικάει, παίρνει μεγαλύτερο bonus
-            modifier += 0.05 if pos > 10 else 0.02
-        elif res == 'L':
-            # Αν είναι ψηλά και χάνει, τρώει μεγαλύτερο πέναλτι
-            modifier -= 0.05 if pos < 6 else 0.02
+    last_results = form.replace(',', '').split()
+    for res in last_results[:3]:
+        if res == 'W': modifier += 0.05 if pos > 10 else 0.02
+        elif res == 'L': modifier -= 0.05 if pos < 6 else 0.02
     return modifier
 
 # --- SIDEBAR ---
@@ -80,8 +73,7 @@ if st_data and 'standings' in st_data:
         standings_dict[t['team']['name']] = {
             'gf': t['goalsFor']/t['playedGames'] if t['playedGames']>0 else 1.2, 
             'ga': t['goalsAgainst']/t['playedGames'] if t['playedGames']>0 else 1.2,
-            'pos': t['position'],
-            'form': t.get('form', "") 
+            'pos': t['position'], 'form': t.get('form', "") 
         }
     df = pd.DataFrame([{"#": t['position'], "Team": t['team']['shortName'], "Pts": t['points']} for t in st_table])
     st.sidebar.markdown("---")
@@ -108,36 +100,60 @@ for i, m in enumerate(display_m):
     h_stats = standings_dict.get(h_t, {'gf':1.2, 'ga':1.2, 'pos':10, 'form':''})
     a_stats = standings_dict.get(a_t, {'gf':1.2, 'ga':1.2, 'pos':10, 'form':''})
     
-    # ΕΦΑΡΜΟΓΗ ΦΟΡΜΑΣ (Smart Bonus)
     h_form_mod = calculate_form_modifier(h_t, standings_dict)
     a_form_mod = calculate_form_modifier(a_t, standings_dict)
     
     time_factor = 0.5 if is_live else 1.0
-    
-    # Το λ τώρα επηρεάζεται από τη φόρμα
     h_l = ((h_stats['gf'] + a_stats['ga'])/2) * time_factor * h_form_mod
     a_l = ((a_stats['gf'] + h_stats['ga'])/2) * time_factor * a_form_mod
     
-    # Poisson Math
+    # Τελικό Αποτέλεσμα
     p1 = sum([poisson.pmf(k, h_l) * sum([poisson.pmf(j, a_l) for j in range(k + (h_score - a_score))]) for k in range(0, 6)])
     px = sum([poisson.pmf(k, h_l) * poisson.pmf(k + (h_score - a_score), a_l) for k in range(0, 6)])
     p2 = max(0, 1 - p1 - px)
-    
+
+    # Ημίχρονο (45% των γκολ)
+    h_l_ht, a_l_ht = h_l * 0.45, a_l * 0.45
+    p1_ht = sum([poisson.pmf(k, h_l_ht) * sum([poisson.pmf(j, a_l_ht) for j in range(k)]) for k in range(1, 5)])
+    px_ht = sum([poisson.pmf(k, h_l_ht) * poisson.pmf(k, a_l_ht) for k in range(5)])
+    p2_ht = max(0, 1 - p1_ht - px_ht)
+
+    # Ακριβή Σκορ (Matrix 0-3 γκολ)
+    scores = []
+    for h in range(4):
+        for a in range(4):
+            prob = poisson.pmf(h, h_l) * poisson.pmf(a, a_l)
+            scores.append((f"{h + h_score}-{a + a_score}", prob))
+    top_scores = sorted(scores, key=lambda x: x[1], reverse=True)[:3]
+
     current_total = h_score + a_score
     po15_val = 1 - sum([poisson.pmf(k, h_l + a_l) for k in range(max(0, 2 - current_total))])
     po25_val = 1 - sum([poisson.pmf(k, h_l + a_l) for k in range(max(0, 3 - current_total))])
     pgg_val = (1-poisson.pmf(0, h_l + (1 if h_score > 0 else 0))) * (1-poisson.pmf(0, a_l + (1 if a_score > 0 else 0)))
-
     is_gg, is_o15, is_o25 = h_score > 0 and a_score > 0, current_total > 1, current_total > 2
 
     title = f"🔴 LIVE {h_score}-{a_score} | {m['homeTeam']['shortName']} vs {m['awayTeam']['shortName']}" if is_live else f"📅 {m['utcDate'][:10]} | {m['homeTeam']['shortName']} vs {m['awayTeam']['shortName']}"
     
     with st.expander(title):
-        cols = st.columns(6)
+        # 1η Σειρά: Βασικά Σημεία
+        cols1 = st.columns(6)
         res_list = [("1", p1, False), ("X", px, False), ("2", p2, False), ("GG", pgg_val, is_gg), ("O1.5", po15_val, is_o15), ("O2.5", po25_val, is_o25)]
         for idx, (lbl, val, happened) in enumerate(res_list):
             val_perc = min(100, max(0, round(val * 100)))
             display_text = "✅" if happened else f"{val_perc}%"
             color = "#00ff88" if (happened or val_perc > 65) else "#ffffff"
-            cols[idx].markdown(f'<div class="prediction-box"><small style="color:#bbb; font-size:12px;">{lbl}</small><br><span style="color:{color}; font-size:16px; font-weight:bold;">{display_text}</span></div>', unsafe_allow_html=True)
+            cols1[idx].markdown(f'<div class="prediction-box"><small style="color:#bbb; font-size:11px;">{lbl}</small><br><span style="color:{color}; font-size:15px; font-weight:bold;">{display_text}</span></div>', unsafe_allow_html=True)
+        
+        # 2η Σειρά: Ημίχρονο & Top Σκορ
+        st.markdown('<p style="font-size:12px; color:#aaa; margin-top:10px; margin-bottom:5px;">HT & Probable Scores</p>', unsafe_allow_html=True)
+        cols2 = st.columns(6)
+        # Ημίχρονο
+        cols2[0].markdown(f'<div class="prediction-box"><small style="color:#bbb; font-size:10px;">HT 1</small><br><span style="color:#fff; font-size:14px;">{round(p1_ht*100)}%</span></div>', unsafe_allow_html=True)
+        cols2[1].markdown(f'<div class="prediction-box"><small style="color:#bbb; font-size:10px;">HT X</small><br><span style="color:#fff; font-size:14px;">{round(px_ht*100)}%</span></div>', unsafe_allow_html=True)
+        cols2[2].markdown(f'<div class="prediction-box"><small style="color:#bbb; font-size:10px;">HT 2</small><br><span style="color:#fff; font-size:14px;">{round(p2_ht*100)}%</span></div>', unsafe_allow_html=True)
+        # Σκορ
+        for i in range(3):
+            s_lbl, s_prob = top_scores[i]
+            cols2[3+i].markdown(f'<div class="prediction-box"><small style="color:#bbb; font-size:10px;">Score</small><br><span style="color:#00ff88; font-size:14px; font-weight:bold;">{s_lbl}</span></div>', unsafe_allow_html=True)
+
 
