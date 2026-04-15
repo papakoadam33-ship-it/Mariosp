@@ -154,5 +154,3 @@ for i, m in enumerate(display_m):
             s_perc = round(s_prob * 100)
             score_color = "#00ff88" if s_perc > 15 else "#ffffff"
             cols2[3+i].markdown(f'<div class="prediction-box"><small style="color:#bbb; font-size:9px;">Exact Score</small><br><span style="color:{score_color}; font-size:13px; font-weight:bold;">{s_lbl} ({s_perc}%)</span></div>', unsafe_allow_html=True)
-
-            
