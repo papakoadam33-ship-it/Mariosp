@@ -1,35 +1,39 @@
-name: Daily Football Data Update
+import requests
 
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: '0 6 * * *'
+# Βάλε το δικό σου κλειδί εδώ
+API_KEY = "ΤΟ_ΚΛΕΙΔΙ_ΣΟΥ_ΕΔΩ"
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+def get_predictions():
+    # Ζητάμε όλα τα ματς των επόμενων 3 ημερών
+    url = "https://api.football-data.org/v4/matches"
+    headers = { 'X-Auth-Token': API_KEY }
+    
+    try:
+        response = requests.get(url, headers=headers)
+        data = response.json()
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
+        with open("daily_predictions.txt", "w", encoding="utf-8") as f:
+            f.write("=== ΠΡΟΓΝΩΣΤΙΚΑ ΕΠΟΜΕΝΩΝ ΗΜΕΡΩΝ ===\n\n")
+            
+            if 'matches' in data:
+                for match in data['matches']:
+                    # Διορθωμένη λήψη ονομάτων για αποφυγή του "None"
+                    home = match.get('homeTeam', {}).get('name', 'Unknown')
+                    away = match.get('awayTeam', {}).get('name', 'Unknown')
+                    league = match.get('competition', {}).get('name', 'Unknown')
+                    date = match.get('utcDate', '')[:10] # Παίρνουμε την ημερομηνία
 
-      - name: Install dependencies
-        run: pip install requests pandas
+                    # Φιλτράρουμε ώστε να μην παίρνουμε Unknown ονόματα
+                    if home != 'Unknown' and away != 'Unknown':
+                        line = f"[{date}] [{league}] {home} vs {away} -> Προγνωστικό: Over 1.5\n"
+                        f.write(line)
+                
+                print("Το αρχείο ενημερώθηκε επιτυχώς!")
+            else:
+                f.write("Δεν βρέθηκαν διαθέσιμα ματς.\n")
+                
+    except Exception as e:
+        print(f"Σφάλμα: {e}")
 
-      - name: Run Data Fetcher
-        env:
-          FOOTBALL_API_KEY: ${{ secrets.FOOTBALLDATAORG }}
-        run: python data_fetcher.py
-
-      - name: Commit and Push changes
-        run: |
-          git config --global user.name "GitHub Action"
-          git config --global user.email "action@github.com"
-          git add betting_app.db
-          git commit -m "Auto-update football data" || exit 0
-          git push
-
+if __name__ == "__main__":
+    get_predictions()
